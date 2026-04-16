@@ -1,39 +1,109 @@
-// Simulate sensor data during ride
-export const generateSensorReading = () => ({
-  throttle: Math.random() * 100,        // 0–100%
-  speed: Math.random() * 60,            // 0–60 km/h
-  accel: (Math.random() - 0.5) * 2,    // -1 to +1 G
-});
+// ---------------------------------------------------------------------------
+// Sensor simulation
+// ---------------------------------------------------------------------------
 
-// Calculate eco-score from sensor data
+let _lastReading = null;
+
+const drift = (prev, min, max, maxStep) => {
+  const next = prev + (Math.random() - 0.5) * 2 * maxStep;
+  return Math.min(max, Math.max(min, next));
+};
+
+export const generateSensorReading = () => {
+  if (!_lastReading) {
+    _lastReading = {
+      throttle: Math.random() * 50,
+      speed:    Math.random() * 30,
+      accel:    (Math.random() - 0.5) * 0.4,
+    };
+    return { ..._lastReading };
+  }
+
+  _lastReading = {
+    throttle: drift(_lastReading.throttle, 0,  100, 10),
+    speed:    drift(_lastReading.speed,    0,   60,  5),
+    accel:    drift(_lastReading.accel,   -1,    1,  0.2),
+  };
+
+  return { ..._lastReading };
+};
+
+export const resetSensorState = () => { _lastReading = null; };
+
+
+// ---------------------------------------------------------------------------
+// Eco score calculation
+// ---------------------------------------------------------------------------
+
+const WEIGHTS    = { throttle: 35, speed: 35, accel: 30 };
+const THRESHOLDS = { throttle: 40, speed: 35, accel: 0.3 };
+const RANGES     = { throttle: 60, speed: 25, accel: 0.7 };
+
 export const calculateEcoScore = (throttle, speed, accel) => {
-  let score = 100;
+  const throttlePenalty = throttle > THRESHOLDS.throttle
+    ? Math.min(WEIGHTS.throttle, ((throttle - THRESHOLDS.throttle) / RANGES.throttle) * WEIGHTS.throttle)
+    : 0;
 
-  // High throttle = aggressive = bad
-  if (throttle > 70) score -= 20;
-  else if (throttle > 50) score -= 10;
+  const speedPenalty = speed > THRESHOLDS.speed
+    ? Math.min(WEIGHTS.speed, ((speed - THRESHOLDS.speed) / RANGES.speed) * WEIGHTS.speed)
+    : 0;
 
-  // High speed = wasteful = bad
-  if (speed > 50) score -= 15;
-  else if (speed > 40) score -= 8;
+  const absAccel = Math.abs(accel);
+  const accelPenalty = absAccel > THRESHOLDS.accel
+    ? Math.min(WEIGHTS.accel, ((absAccel - THRESHOLDS.accel) / RANGES.accel) * WEIGHTS.accel)
+    : 0;
 
-  // High accel = jerky = bad
-  if (Math.abs(accel) > 0.7) score -= 15;
-  else if (Math.abs(accel) > 0.4) score -= 8;
-
-  return Math.max(0, Math.min(100, score));
+  return Math.max(0, Math.round(100 - throttlePenalty - speedPenalty - accelPenalty));
 };
 
-// Batch calculate avg eco-score over time window
-export const calculateTripEcoScore = (readings) => {
-  if (readings.length === 0) return 0;
+
+// ---------------------------------------------------------------------------
+// Trip-level aggregation
+// ---------------------------------------------------------------------------
+
+export const calculateTripStats = (readings) => {
+  if (!readings.length) return { avg: 0, min: 0, max: 0, worstAxis: null };
+
   const scores = readings.map((r) => calculateEcoScore(r.throttle, r.speed, r.accel));
-  return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+  const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+  const min = Math.min(...scores);
+  const max = Math.max(...scores);
+
+  const avgPenalty = (axis, fn) =>
+    readings.reduce((sum, r) => sum + fn(r), 0) / readings.length;
+
+  const penalties = {
+    throttle: avgPenalty('throttle', (r) => r.throttle > THRESHOLDS.throttle
+      ? ((r.throttle - THRESHOLDS.throttle) / RANGES.throttle) * WEIGHTS.throttle : 0),
+    speed: avgPenalty('speed', (r) => r.speed > THRESHOLDS.speed
+      ? ((r.speed - THRESHOLDS.speed) / RANGES.speed) * WEIGHTS.speed : 0),
+    accel: avgPenalty('accel', (r) => {
+      const a = Math.abs(r.accel);
+      return a > THRESHOLDS.accel ? ((a - THRESHOLDS.accel) / RANGES.accel) * WEIGHTS.accel : 0;
+    }),
+  };
+
+  const worstAxis = Object.keys(penalties).reduce((a, b) => penalties[a] > penalties[b] ? a : b);
+  return { avg, min, max, worstAxis };
 };
 
-// Get color + label for score
+// Backward-compatible alias
+export const calculateTripEcoScore = (readings) => calculateTripStats(readings).avg;
+
+
+// ---------------------------------------------------------------------------
+// Score presentation
+// ---------------------------------------------------------------------------
+
 export const getEcoScoreColor = (score) => {
-  if (score >= 80) return { color: '#28a745', label: 'Eco Champion 🌿' };
-  if (score >= 60) return { color: '#ffc107', label: 'Good Riding 👍' };
-  return { color: '#dc3545', label: 'Aggressive 🚀' };
+  if (score >= 90) return { color: '#1a7e32', label: 'Eco Champion' };
+  if (score >= 70) return { color: '#28a745', label: 'Good Riding' };
+  if (score >= 50) return { color: '#ffc107', label: 'Room to Improve' };
+  return            { color: '#dc3545', label: 'Aggressive' };
 };
+
+export const getTripTip = (worstAxis) => ({
+  throttle: 'Ease off the throttle gradually for a smoother, greener ride.',
+  speed:    'Keeping speed under 35 km/h saves the most energy.',
+  accel:    'Smooth acceleration and braking improves your score significantly.',
+}[worstAxis] ?? null);

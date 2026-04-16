@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ref, set } from 'firebase/database';
 import { db } from '../config/firebase';
 import { generateSensorReading, calculateEcoScore, calculateTripEcoScore, getEcoScoreColor } from '../utils/ecoScoring';
+import './RiderDashboard.css';
 
 export default function RiderDashboard({ riderName }) {
   const [isSharing, setIsSharing] = useState(false);
@@ -12,12 +13,26 @@ export default function RiderDashboard({ riderName }) {
   const [speedSum, setSpeedSum] = useState(0);
   const [readingCount, setReadingCount] = useState(0);
   const [readings, setReadings] = useState([]);
+  const [tripDuration, setTripDuration] = useState(0);
+  const [tripStarted, setTripStarted] = useState(false);
+  const [error, setError] = useState(null);
 
   const batteryRef = useRef(battery);
+  const watchIdRef = useRef(null);
+
   useEffect(() => { batteryRef.current = battery; }, [battery]);
 
   const riderId = riderName?.toLowerCase().replace(/\s+/g, '-') || 'rider-1';
   const avgSpeed = readingCount > 0 ? speedSum / readingCount : 0;
+
+  // Trip duration timer
+  useEffect(() => {
+    if (!tripStarted) return;
+    const interval = setInterval(() => {
+      setTripDuration((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [tripStarted]);
 
   // Generate eco-score every 5 seconds during trip
   useEffect(() => {
@@ -26,7 +41,7 @@ export default function RiderDashboard({ riderName }) {
     const interval = setInterval(() => {
       const reading = generateSensorReading();
       setReadings((prev) => [...prev, reading]);
-      
+
       const score = calculateEcoScore(reading.throttle, reading.speed, reading.accel);
       setEcoScore(score);
       setTripDistance((prev) => prev + 0.05);
@@ -37,49 +52,74 @@ export default function RiderDashboard({ riderName }) {
     return () => clearInterval(interval);
   }, [isSharing]);
 
-  // Update Firebase with location every 30s
+  // watchPosition for continuous GPS + Firebase sync
   useEffect(() => {
     if (!isSharing) return;
 
-    const interval = setInterval(() => {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const { latitude, longitude } = position.coords;
-            setLocation({ latitude, longitude });
+    if (!navigator.geolocation) {
+      setError('Geolocation not supported');
+      return;
+    }
 
-            const locationRef = ref(db, `riders/${riderId}/location`);
-            set(locationRef, {
-              lat: latitude,
-              lon: longitude,
-              name: riderName,
-              timestamp: new Date().toISOString(),
-              battery: batteryRef.current,
-            });
+    const id = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        setLocation({ latitude, longitude, accuracy });
+        setError(null);
 
-            const statusRef = ref(db, `riders/${riderId}/status`);
-            set(statusRef, 'online');
-          },
-          (err) => console.error('Geolocation error:', err.message)
-        );
+        const locationRef = ref(db, `riders/${riderId}/location`);
+        set(locationRef, {
+          lat: latitude,
+          lon: longitude,
+          name: riderName,
+          timestamp: new Date().toISOString(),
+          battery: batteryRef.current,
+          accuracy,
+        }).catch((err) => setError(err.message));
+
+        const statusRef = ref(db, `riders/${riderId}/status`);
+        set(statusRef, 'online').catch((err) => setError(err.message));
+      },
+      (err) => {
+        console.error('Geolocation error:', err);
+        setError(`GPS Error: ${err.message}`);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
       }
-    }, 30000);
+    );
 
-    return () => clearInterval(interval);
+    watchIdRef.current = id;
+
+    return () => {
+      navigator.geolocation.clearWatch(id);
+      watchIdRef.current = null;
+    };
   }, [isSharing, riderName, riderId]);
 
   const handleStartSharing = () => {
     setIsSharing(true);
+    setTripStarted(true);
     setEcoScore(0);
     setTripDistance(0);
     setSpeedSum(0);
     setReadingCount(0);
     setReadings([]);
+    setTripDuration(0);
+    setError(null);
   };
 
   const handleStopSharing = async () => {
     if (!isSharing) return;
     setIsSharing(false);
+    setTripStarted(false);
+
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
 
     const tripId = `trip-${Date.now()}`;
     const tripRef = ref(db, `riders/${riderId}/trips/${tripId}`);
@@ -91,99 +131,139 @@ export default function RiderDashboard({ riderName }) {
       avgSpeedKmh: parseFloat(avgSpeed.toFixed(1)),
       score: tripEcoScore,
       readingCount: readings.length,
+      durationSeconds: tripDuration,
+      startLat: location?.latitude ?? null,
+      startLon: location?.longitude ?? null,
     });
 
     const statusRef = ref(db, `riders/${riderId}/status`);
     set(statusRef, 'offline');
-    
+
     setReadings([]);
+  };
+
+  const formatDuration = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const ecoScoreColor = getEcoScoreColor(ecoScore);
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial', maxWidth: '600px', margin: '0 auto' }}>
+    <div className="rider-dashboard">
       <h1>🚴 Rider Dashboard</h1>
-      <p style={{
-        display: 'inline-block', background: '#e8f5e9', padding: '4px 12px',
-        borderRadius: '20px', fontSize: '14px', color: '#2e7d32', marginBottom: '16px',
-      }}>
-        {riderName}
-      </p>
 
-      {/* Battery slider */}
-      <div style={{ marginBottom: '20px' }}>
+      <p className="rider-name-badge">{riderName}</p>
+
+      {/* Battery Section */}
+      <div className="battery-section">
         <p><strong>🔋 Battery: {battery}%</strong></p>
+        <div className="battery-bar">
+          <div
+            className="battery-fill"
+            style={{
+              width: `${battery}%`,
+              backgroundColor: battery > 60 ? '#4CAF50' : battery > 30 ? '#FFC107' : '#f44336',
+            }}
+          />
+        </div>
         <input
           type="range" min="0" max="100" value={battery}
           onChange={(e) => setBattery(Number(e.target.value))}
-          style={{ width: '100%' }}
+          className="battery-slider"
         />
       </div>
 
+      {/* Trip Timer */}
+      {tripStarted && (
+        <div className="trip-timer">
+          <p className="timer-label">⏱️ Trip Duration</p>
+          <p className="timer-value">{formatDuration(tripDuration)}</p>
+        </div>
+      )}
+
       {/* Start/Stop buttons */}
-      <div style={{ marginBottom: '20px', display: 'flex', gap: '10px' }}>
+      <div className="button-group">
         <button
           onClick={handleStartSharing}
-          style={{
-            flex: 1, padding: '10px 20px',
-            background: isSharing ? '#ccc' : '#4CAF50',
-            color: 'white', border: 'none', cursor: 'pointer', fontSize: '16px', borderRadius: '4px',
-          }}
           disabled={isSharing}
+          className="btn btn-start"
         >
-          {isSharing ? '✓ Sharing...' : 'Start Sharing'}
+          {isSharing ? '✓ Sharing...' : '▶️ Start Sharing'}
         </button>
-
         <button
           onClick={handleStopSharing}
-          style={{
-            flex: 1, padding: '10px 20px',
-            background: isSharing ? '#f44336' : '#ccc',
-            color: 'white', border: 'none', cursor: 'pointer', fontSize: '16px', borderRadius: '4px',
-          }}
           disabled={!isSharing}
+          className="btn btn-stop"
         >
-          Stop Sharing
+          ⏹️ Stop Sharing
         </button>
       </div>
 
-      {/* Location display */}
+      {/* SOS Button */}
+      <button className="btn btn-sos">🆘 SOS Emergency</button>
+
+      {/* Location Display */}
       {location && (
-        <div style={{ background: '#f9f9f9', padding: '10px', borderRadius: '6px', marginBottom: '20px', fontSize: '13px' }}>
-          <p style={{ margin: '4px 0' }}>📍 Lat: {location.latitude.toFixed(4)}</p>
-          <p style={{ margin: '4px 0' }}>📍 Lon: {location.longitude.toFixed(4)}</p>
+        <div className="location-display">
+          <p>📍 Lat: {location.latitude.toFixed(4)}</p>
+          <p>📍 Lon: {location.longitude.toFixed(4)}</p>
+          <p>📡 Accuracy: ±{Math.round(location.accuracy)} m</p>
         </div>
       )}
 
-      {/* Live trip stats (only when sharing) */}
-      {isSharing && (
-        <div style={{ background: '#e8f5e9', padding: '16px', borderRadius: '6px', marginBottom: '20px' }}>
-          <h3 style={{ margin: '0 0 12px' }}>📊 Live Trip Stats</h3>
+      {/* Error Display */}
+      {error && (
+        <div className="error-box">
+          <p>⚠️ {error}</p>
+        </div>
+      )}
 
-          {/* Eco-score gauge */}
-          <div style={{ marginBottom: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 'bold' }}>🌿 Eco-Score</span>
-              <span style={{ fontSize: '24px', fontWeight: 'bold', color: ecoScoreColor.color }}>
+      {/* Live Trip Stats */}
+      {isSharing && (
+        <div className="live-stats">
+          <h3>📊 Live Trip Stats</h3>
+
+          <div className="eco-score-section">
+            <div className="eco-score-header">
+              <span><strong>🌿 Eco-Score</strong></span>
+              <span className="eco-score-value" style={{ color: ecoScoreColor.color }}>
                 {Math.round(ecoScore)}/100
               </span>
             </div>
-            <div style={{ background: '#ddd', height: '8px', borderRadius: '4px', marginTop: '4px', overflow: 'hidden' }}>
-              <div style={{ background: ecoScoreColor.color, height: '100%', width: `${ecoScore}%`, transition: 'width 0.3s' }} />
+            <div className="eco-bar">
+              <div
+                className="eco-fill"
+                style={{ background: ecoScoreColor.color, width: `${ecoScore}%` }}
+              />
             </div>
-            <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#666' }}>{ecoScoreColor.label}</p>
+            <p className="eco-label">{ecoScoreColor.label}</p>
           </div>
 
-          <p style={{ margin: '4px 0' }}>📏 Distance: <strong>{tripDistance.toFixed(2)} km</strong></p>
-          <p style={{ margin: '4px 0' }}>⚡ Avg Speed: <strong>{avgSpeed.toFixed(1)} km/h</strong></p>
+          <p>📏 Distance: <strong>{tripDistance.toFixed(2)} km</strong></p>
+          <p>⚡ Avg Speed: <strong>{avgSpeed.toFixed(1)} km/h</strong></p>
         </div>
       )}
 
-      {/* Trip ended message */}
+      {/* Status Box */}
+      <div className="status-box">
+        {isSharing ? (
+          <>
+            <p className="status-active">✓ Location Sharing Active</p>
+            <p className="status-sub">Syncing to Firebase continuously</p>
+          </>
+        ) : (
+          <p className="status-inactive">○ Not Sharing Location</p>
+        )}
+      </div>
+
+      {/* Trip Ended Summary */}
       {!isSharing && tripDistance > 0 && (
-        <div style={{ background: '#d4edda', padding: '12px', borderRadius: '6px', color: '#155724' }}>
-          ✓ Trip ended! Distance: {tripDistance.toFixed(2)} km | Final Eco-Score: {Math.round(ecoScore)}/100
+        <div className="trip-ended">
+          ✓ Trip ended! Distance: {tripDistance.toFixed(2)} km | Duration: {formatDuration(tripDuration)} | Final Eco-Score: {Math.round(ecoScore)}/100
         </div>
       )}
     </div>
