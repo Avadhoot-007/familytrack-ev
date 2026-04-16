@@ -1,0 +1,428 @@
+/* TripSummaryCard.css */
+
+.trip-summary-card {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin: 20px 0;
+  font-family: Arial, sans-serif;
+}
+
+.trip-summary-card h2 {
+  color: #333;
+  margin-bottom: 20px;
+  font-size: 24px;
+}
+
+/* Stats Grid */
+.trip-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+  margin-bottom: 30px;
+}
+
+.stat-box {
+  background: #f9f9f9;
+  padding: 15px;
+  border-radius: 6px;
+  text-align: center;
+  border: 1px solid #e0e0e0;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+  margin: 0;
+  margin-bottom: 10px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: #333;
+  margin: 0;
+}
+
+/* Eco-Score Section */
+.eco-score-section {
+  margin-bottom: 30px;
+  padding: 20px;
+  background: #f5f5f5;
+  border-radius: 8px;
+}
+
+.eco-score-section h3 {
+  margin-top: 0;
+  color: #333;
+}
+
+.eco-gauge-container {
+  display: flex;
+  gap: 30px;
+  align-items: center;
+}
+
+.eco-gauge {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.eco-value {
+  font-size: 40px;
+  line-height: 1;
+}
+
+.eco-label {
+  font-size: 14px;
+  margin-top: 5px;
+}
+
+.eco-text {
+  flex: 1;
+}
+
+.eco-rating {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+  margin: 0 0 10px 0;
+}
+
+.eco-description {
+  font-size: 14px;
+  color: #666;
+  margin: 0;
+}
+
+/* Battery Projection */
+.battery-projection {
+  padding: 15px;
+  background: #e8f5e9;
+  border-left: 4px solid #4CAF50;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.battery-projection h3 {
+  margin-top: 0;
+  color: #2e7d32;
+}
+
+.battery-projection p {
+  margin: 8px 0;
+  font-size: 14px;
+  color: #333;
+}
+
+.projection-tip {
+  color: #2e7d32;
+  font-weight: bold;
+}
+
+/* Action Buttons */
+.action-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-primary {
+  background: #4CAF50;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #45a049;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn-secondary {
+  background: #2196F3;
+  color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #0b7dda;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* CoachingTipCard.css */
+
+.coaching-tip-card {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin: 20px 0;
+  font-family: Arial, sans-serif;
+}
+
+.coaching-tip-card h2 {
+  color: #333;
+  margin-bottom: 10px;
+  font-size: 24px;
+}
+
+.eco-context {
+  color: #666;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+/* Tips Section */
+.tips-section,
+.sent-tips-section {
+  margin-bottom: 30px;
+}
+
+.tips-section h3,
+.sent-tips-section h3 {
+  color: #333;
+  font-size: 16px;
+  margin-bottom: 15px;
+}
+
+.no-tips {
+  color: #999;
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+  background: #f9f9f9;
+  border-radius: 6px;
+}
+
+/* Tips List */
+.tips-list,
+.sent-tips-list {
+  display: grid;
+  gap: 15px;
+}
+
+.tip-card,
+.sent-tip-card {
+  padding: 15px;
+  background: #f9f9f9;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+}
+
+.tip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.tip-header h4 {
+  margin: 0;
+  font-size: 16px;
+  color: #333;
+  flex: 1;
+}
+
+.priority-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: white;
+  font-size: 11px;
+  font-weight: bold;
+  white-space: nowrap;
+  margin-left: 10px;
+}
+
+.tip-message {
+  color: #666;
+  font-size: 14px;
+  margin: 10px 0;
+}
+
+.btn-send-tip {
+  background: #4CAF50;
+  color: white;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-send-tip:hover {
+  background: #45a049;
+}
+
+/* Sent Tips */
+.sent-tip-card {
+  padding: 15px;
+  background: #f0f7f0;
+  border-left: 4px solid #4CAF50;
+}
+
+.sent-tip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.sent-tip-header h5 {
+  margin: 0;
+  font-size: 14px;
+  color: #2e7d32;
+  flex: 1;
+}
+
+.read-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  margin-left: 10px;
+}
+
+.read-badge.read {
+  background: #4CAF50;
+  color: white;
+}
+
+.read-badge.unread {
+  background: #FFC107;
+  color: white;
+}
+
+.sent-tip-message {
+  color: #333;
+  font-size: 13px;
+  margin: 8px 0;
+}
+
+.sent-tip-meta {
+  color: #999;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  padding: 30px;
+  border-radius: 8px;
+  max-width: 400px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.modal-content h3 {
+  margin-top: 0;
+  color: #333;
+}
+
+.modal-tip-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #4CAF50;
+  margin: 15px 0 10px 0;
+}
+
+.modal-tip-message {
+  color: #666;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.btn-cancel {
+  background: #ddd;
+  color: #333;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.btn-cancel:hover {
+  background: #ccc;
+}
+
+.btn-confirm {
+  background: #4CAF50;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.btn-confirm:hover:not(:disabled) {
+  background: #45a049;
+}
+
+.btn-confirm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .trip-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .eco-gauge-container {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+  }
+
+  .btn {
+    width: 100%;
+  }
+}

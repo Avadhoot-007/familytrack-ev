@@ -1,0 +1,33 @@
+.coaching-tip-card {
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.coaching-tip-card h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.coaching-tip-card p {
+  margin: 8px 0;
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.coaching-tip-card .tip-score {
+  font-weight: bold;
+  color: #1e88e5;
+}
+
+.coaching-tip-card .tip-warning {
+  color: #dc3545;
+}
+
+.coaching-tip-card .tip-success {
+  color: #28a745;
+}

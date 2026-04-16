@@ -1,0 +1,24 @@
+{
+  "rules": {
+    "riders": {
+      "$riderId": {
+        ".read": true,
+        ".write": "$uid === $riderId",
+        "location": {
+          ".validate": "newData.hasChildren(['lat', 'lon', 'battery', 'timestamp'])"
+        },
+        "trips": {
+          "$tripId": {
+            ".validate": "newData.hasChildren(['timestamp', 'distanceKm', 'avgSpeedKmh', 'score'])"
+          }
+        }
+      }
+    },
+    "families": {
+      "$familyId": {
+        ".read": "root.child('families').child($familyId).child('members').child($uid).exists()",
+        ".write": "root.child('families').child($familyId).child('members').child($uid).exists()"
+      }
+    }
+  }
+}
