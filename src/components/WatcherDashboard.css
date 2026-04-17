@@ -4,6 +4,8 @@
   position: relative;
   border-radius: 8px;
   overflow: hidden;
+  /* FIX: explicit stacking context so children can escape Leaflet's z-index layers */
+  isolation: isolate;
 }
 
 .map-container {
@@ -17,35 +19,33 @@
   width: 100% !important;
 }
 
-/* Recenter button — sits above tiles, below popups */
+/* Recenter button — FIX: z-index raised to 1000 to clear Leaflet's tile/overlay panes */
 .recenter-btn {
   position: absolute;
   bottom: 15px;
   right: 15px;
-  z-index: 400;
-  padding: 8px 14px;
-  background: #2a2a2a;
-  border: 2px solid #555;
+  z-index: 1000;
+  padding: 10px 16px;
+  background: #2196f3;
+  border: none;
   border-radius: 6px;
   cursor: pointer;
   font-weight: bold;
   font-size: 13px;
-  color: #e0e0e0;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-  transition: background 0.15s, box-shadow 0.15s, border-color 0.15s;
+  color: white;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+  transition: background 0.15s, box-shadow 0.15s, transform 0.15s;
   font-family: Arial, sans-serif;
   pointer-events: auto;
 }
 
 .recenter-btn:hover {
-  background: #3a3a3a;
-  border-color: #64b5f6;
-  box-shadow: 0 3px 10px rgba(100, 181, 246, 0.3);
+  background: #1976d2;
+  box-shadow: 0 4px 14px rgba(33, 150, 243, 0.5);
 }
 
 .recenter-btn:active {
-  background: #e3f2fd;
-  transform: scale(0.97);
+  transform: scale(0.96);
 }
 
 /* Alert panel styling - dark theme */
