@@ -1,0 +1,215 @@
+/* Map wrapper fixes map sizing issue */
+.map-wrapper {
+  height: 400px;
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.map-container {
+  height: 100% !important;
+  width: 100% !important;
+  border-radius: 8px;
+}
+
+.leaflet-container {
+  height: 100% !important;
+  width: 100% !important;
+}
+
+/* Recenter button — sits above tiles, below popups */
+.recenter-btn {
+  position: absolute;
+  bottom: 15px;
+  right: 15px;
+  z-index: 400;
+  padding: 8px 14px;
+  background: white;
+  border: 2px solid #bbb;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 13px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  transition: background 0.15s, box-shadow 0.15s, border-color 0.15s;
+  font-family: Arial, sans-serif;
+  /* Prevent Leaflet click-through */
+  pointer-events: auto;
+}
+
+.recenter-btn:hover {
+  background: #f0f7ff;
+  border-color: #2196f3;
+  box-shadow: 0 3px 10px rgba(33, 150, 243, 0.3);
+}
+
+.recenter-btn:active {
+  background: #e3f2fd;
+  transform: scale(0.97);
+}
+
+/* Alert panel styling */
+.alerts-panel {
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+/* Trip history table responsive */
+.trip-table-wrapper {
+  overflow-x: auto;
+}
+
+.trip-table-wrapper table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.trip-table-wrapper th,
+.trip-table-wrapper td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.trip-table-wrapper th {
+  background: #f5f5f5;
+  border-bottom: 2px solid #ddd;
+  font-weight: bold;
+}
+
+.trip-table-wrapper tr:hover {
+  background: #f9f9f9;
+}
+
+/* Rider status pills */
+.rider-pill {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  display: inline-block;
+  margin-right: 8px;
+  margin-bottom: 8px;
+  border: 1px solid;
+}
+
+.rider-pill.online {
+  color: white;
+  font-weight: normal;
+}
+
+.rider-pill.offline {
+  background: #eee;
+  color: #999;
+  border-color: #ddd;
+}
+
+.rider-pill.sos {
+  background: #dc3545;
+  color: white;
+  border-color: #dc3545;
+  font-weight: bold;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.7; }
+}
+
+/* Modal styling */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 8px;
+  max-width: 800px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  padding: 20px;
+}
+
+/* SOS modal */
+.sos-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.sos-modal-content {
+  background: white;
+  border-radius: 12px;
+  padding: 32px;
+  max-width: 440px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  text-align: center;
+}
+
+.sos-modal-content h2 {
+  color: #dc3545;
+  margin: 0 0 8px;
+  font-size: 28px;
+}
+
+.sos-info-box {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+  text-align: left;
+  font-size: 14px;
+}
+
+.sos-info-box p {
+  margin: 4px 0;
+}
+
+.sos-button-group {
+  display: flex;
+  gap: 10px;
+  flex-direction: column;
+}
+
+.sos-button-group a,
+.sos-button-group button {
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 14px;
+  text-decoration: none;
+  display: block;
+  text-align: center;
+}
+
+.sos-button-group .maps-btn {
+  background: #1976d2;
+  color: white;
+}
+
+.sos-button-group .resolve-btn {
+  background: #28a745;
+  color: white;
+}
+
+.sos-button-group .dismiss-btn {
+  background: #6c757d;
+  color: white;
+}

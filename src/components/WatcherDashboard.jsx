@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ref, onValue, update } from 'firebase/database';
 import { db } from '../config/firebase';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
@@ -39,23 +39,36 @@ const createDivIcon = (color, label) =>
     popupAnchor: [0, -30],
   });
 
-function RecenterMap({ lat, lon }) {
+// ── FIX: MapController replaces both MapReady and RecenterMap ────────────────
+// - Captures the real Leaflet map instance via useMap() and exposes it through
+//   a callback ref so the parent can call setView() for the Recenter button.
+// - Calls invalidateSize() only once, after the map's own 'load' event fires,
+//   which is more reliable than a fixed setTimeout.
+// - Recenter is now MANUAL ONLY — it no longer auto-pans on every data update,
+//   which was fighting the user's own panning.
+function MapController({ onMapReady }) {
   const map = useMap();
-  useEffect(() => {
-    if (validCoords(lat, lon)) {
-      map.setView([lat, lon], 13);
-    }
-  }, [lat, lon, map]);
-  return null;
-}
 
-function MapReady() {
-  const map = useMap();
   useEffect(() => {
-    setTimeout(() => map.invalidateSize(), 100);
-  }, [map]);
+    // Pass the live Leaflet instance up to the parent
+    if (onMapReady) onMapReady(map);
+
+    // invalidateSize after the map finishes its first tile load
+    const handleLoad = () => map.invalidateSize();
+    map.once('load', handleLoad);
+
+    // Fallback: also run after a short delay in case 'load' already fired
+    const fallback = setTimeout(() => map.invalidateSize(), 300);
+
+    return () => {
+      clearTimeout(fallback);
+      map.off('load', handleLoad);
+    };
+  }, [map, onMapReady]);
+
   return null;
 }
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ── Watcher-side SOS alert modal ──────────────────────────────────────────────
 function SOSAlertModal({ sosRider, onResolve, onClose }) {
@@ -68,83 +81,40 @@ function SOSAlertModal({ sosRider, onResolve, onClose }) {
       : null;
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0,
-      background: 'rgba(0,0,0,0.7)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 9999,
-    }}>
-      <div style={{
-        background: 'white', borderRadius: '12px',
-        padding: '32px', maxWidth: '440px', width: '90%',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        textAlign: 'center',
-      }}>
+    <div className="sos-modal">
+      <div className="sos-modal-content">
         <div style={{ fontSize: '56px', marginBottom: '8px' }}>🚨</div>
-        <h2 style={{ color: '#dc3545', margin: '0 0 8px' }}>SOS EMERGENCY</h2>
+        <h2>SOS EMERGENCY</h2>
         <p style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>
           {sosRider.sosRiderName || sosRider.riderId} needs help!
         </p>
 
-        <div style={{
-          background: '#fff3cd', border: '1px solid #ffc107',
-          borderRadius: '8px', padding: '12px', marginBottom: '16px',
-          textAlign: 'left', fontSize: '14px',
-        }}>
+        <div className="sos-info-box">
           {sosRider.sosTimestamp && (
-            <p style={{ margin: '4px 0' }}>
-              🕐 <strong>Time:</strong>{' '}
+            <p>🕐 <strong>Time:</strong>{' '}
               {new Date(sosRider.sosTimestamp).toLocaleTimeString()}
             </p>
           )}
           {loc && validCoords(loc.lat, loc.lon) ? (
-            <p style={{ margin: '4px 0' }}>
-              📍 <strong>Location:</strong> {Number(loc.lat).toFixed(4)}, {Number(loc.lon).toFixed(4)}
-            </p>
+            <p>📍 <strong>Location:</strong> {Number(loc.lat).toFixed(4)}, {Number(loc.lon).toFixed(4)}</p>
           ) : (
-            <p style={{ margin: '4px 0' }}>📍 <strong>Location:</strong> Not available</p>
+            <p>📍 <strong>Location:</strong> Not available</p>
           )}
           {sosRider.sosBattery != null && (
-            <p style={{ margin: '4px 0' }}>
-              🔋 <strong>Battery:</strong> {sosRider.sosBattery}%
-            </p>
+            <p>🔋 <strong>Battery:</strong> {sosRider.sosBattery}%</p>
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
+        <div className="sos-button-group">
           {mapsUrl && (
-            <a
-              href={mapsUrl}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                display: 'block', padding: '10px',
-                background: '#1976d2', color: 'white',
-                borderRadius: '6px', textDecoration: 'none',
-                fontWeight: 'bold', fontSize: '14px',
-              }}
-            >
+            <a href={mapsUrl} target="_blank" rel="noreferrer" className="maps-btn">
               📍 Open in Google Maps
             </a>
           )}
-          <button
-            onClick={onResolve}
-            style={{
-              padding: '10px', background: '#28a745', color: 'white',
-              border: 'none', borderRadius: '6px', cursor: 'pointer',
-              fontWeight: 'bold', fontSize: '14px',
-            }}
-          >
+          <button onClick={onResolve} className="resolve-btn">
             ✓ Mark as Resolved
           </button>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '10px', background: '#6c757d', color: 'white',
-              border: 'none', borderRadius: '6px', cursor: 'pointer',
-              fontSize: '14px',
-            }}
-          >
+          <button onClick={onClose} className="dismiss-btn">
             Dismiss (keep monitoring)
           </button>
         </div>
@@ -276,10 +246,20 @@ export default function WatcherDashboard() {
   const [firstOnlineRider, setFirstOnlineRider] = useState(null);
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [sosRider, setSosRider] = useState(null);
+
+  // FIX: mapRef now holds the actual Leaflet map instance (set by MapController
+  // via onMapReady callback) instead of the DOM node from MapContainer's ref.
+  const mapRef = useRef(null);
+
   const riderIndexMap = useRef({});
   const riderColorMap = useRef({});
   const previousInsideRef = useRef({});
   const sosProcessedRef = useRef({});
+
+  // FIX: stable callback so MapController's useEffect doesn't re-run on renders
+  const handleMapReady = useCallback((mapInstance) => {
+    mapRef.current = mapInstance;
+  }, []);
 
   useEffect(() => {
     const ridersRef = ref(db, 'riders');
@@ -301,7 +281,6 @@ export default function WatcherDashboard() {
 
       // ── SOS detection ──────────────────────────────────────────────────────
       Object.entries(data).forEach(([riderId, riderData]) => {
-        // sosTriggered must be explicitly true and not yet processed
         if (riderData.sosTriggered === true && !sosProcessedRef.current[riderId]) {
           sosProcessedRef.current[riderId] = true;
           setSosRider({ riderId, ...riderData });
@@ -314,7 +293,6 @@ export default function WatcherDashboard() {
             ...prev.slice(0, 49),
           ]);
         } else if (riderData.sosTriggered === false) {
-          // SOS was cleared — allow it to fire again next time
           sosProcessedRef.current[riderId] = false;
         }
       });
@@ -368,7 +346,7 @@ export default function WatcherDashboard() {
       });
       setAllTrips(trips);
 
-      // Centre map on first online rider
+      // Centre map on first online rider (stored for Recenter button, not auto-pan)
       const onlineEntry = Object.entries(data).find(([, r]) => {
         if (r.status !== 'online' || !r.location) return false;
         const lon = r.location.lon ?? r.location.lng;
@@ -376,7 +354,9 @@ export default function WatcherDashboard() {
       });
       if (onlineEntry) {
         const loc = onlineEntry[1].location;
-        setFirstOnlineRider({ ...loc, lon: loc.lon ?? loc.lng });
+        // FIX: Only set firstOnlineRider once so Recenter snaps to the first
+        // known online rider rather than jumping every time Firebase updates.
+        setFirstOnlineRider((prev) => prev ?? { ...loc, lon: loc.lon ?? loc.lng });
       }
       // ──────────────────────────────────────────────────────────────────────
     });
@@ -423,9 +403,7 @@ export default function WatcherDashboard() {
   const handleSOSResolve = async () => {
     if (!sosRider?.riderId) return;
     try {
-      await update(ref(db, `riders/${sosRider.riderId}`), {
-        sosTriggered: false,
-      });
+      await update(ref(db, `riders/${sosRider.riderId}`), { sosTriggered: false });
       sosProcessedRef.current[sosRider.riderId] = false;
       setSosRider(null);
     } catch (error) {
@@ -434,10 +412,18 @@ export default function WatcherDashboard() {
     }
   };
 
-  const handleSOSDismiss = () => {
-    setSosRider(null);
-    // Do NOT reset sosProcessedRef — we don't want repeated popups for the
-    // same active SOS until the rider clears it or it's resolved.
+  const handleSOSDismiss = () => setSosRider(null);
+
+  // FIX: mapRef.current is now the real Leaflet instance, so setView works correctly.
+  // Previously mapRef pointed to the DOM element (MapContainer's forwardRef target),
+  // which has no setView method — the button silently did nothing.
+  const handleRecenterMap = () => {
+    if (!mapRef.current) return;
+    if (firstOnlineRider && validCoords(firstOnlineRider.lat, firstOnlineRider.lon)) {
+      mapRef.current.setView([firstOnlineRider.lat, firstOnlineRider.lon], 13);
+    } else {
+      mapRef.current.setView(defaultCenter, 13);
+    }
   };
 
   return (
@@ -468,18 +454,31 @@ export default function WatcherDashboard() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '30px' }}>
         {/* Map */}
-        <div style={{ flex: 1, minHeight: '400px', position: 'relative' }}>
-          <MapContainer center={mapCenter} zoom={13} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' }}>
+        <div className="map-wrapper">
+          {/* FIX: Recenter button moved outside MapContainer so it doesn't
+              interfere with Leaflet's internal DOM. z-index kept at 400 to
+              sit above tiles but below popups (z-index 600+). */}
+          <button
+            onClick={handleRecenterMap}
+            className="recenter-btn"
+            title={firstOnlineRider ? 'Recenter on first online rider' : 'Recenter on default location'}
+          >
+            📍 Recenter
+          </button>
+
+          {/* FIX: No ref prop on MapContainer — the real instance comes from
+              MapController's useMap() via the onMapReady callback instead. */}
+          <MapContainer center={mapCenter} zoom={13} className="map-container">
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               attribution='&copy; OpenStreetMap contributors'
               maxZoom={19}
               crossOrigin={true}
             />
-            <MapReady />
-            {firstOnlineRider && validCoords(firstOnlineRider.lat, firstOnlineRider.lon) && (
-              <RecenterMap lat={firstOnlineRider.lat} lon={firstOnlineRider.lon} />
-            )}
+
+            {/* FIX: Single controller handles both map-ready and recenter logic */}
+            <MapController onMapReady={handleMapReady} />
+
             {onlineRiders.map(([riderId, riderData]) => {
               const hasSOS = riderData.sosTriggered && !riderData.sosResolved;
               const color = hasSOS ? '#dc3545' : (riderColorMap.current[riderId] || '#e53935');
@@ -603,51 +602,38 @@ export default function WatcherDashboard() {
         };
         return (
           <div
-            style={{
-              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-              background: 'rgba(0,0,0,0.5)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              zIndex: 1000,
-            }}
+            className="modal-overlay"
             onClick={() => setSelectedTrip(null)}
           >
             <div
-              style={{
-                background: 'white', borderRadius: '8px',
-                maxWidth: '800px', width: '90%',
-                maxHeight: '90vh', overflowY: 'auto',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-              }}
+              className="modal-content"
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <h2>{selectedTrip.riderName || selectedTrip.riderId}</h2>
-                  <button
-                    onClick={() => setSelectedTrip(null)}
-                    style={{
-                      background: '#f0f0f0', border: 'none',
-                      fontSize: '20px', cursor: 'pointer',
-                      padding: '4px 8px', borderRadius: '4px',
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-                <TripSummaryCard trip={tripForCard} riderId={selectedTrip.riderId} />
-                <CoachingTipCard
-                  ecoScore={selectedTrip.score}
-                  tripData={selectedTrip}
-                  riderId={selectedTrip.riderId}
-                  watcherId="parent"
-                />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h2>{selectedTrip.riderName || selectedTrip.riderId}</h2>
+                <button
+                  onClick={() => setSelectedTrip(null)}
+                  style={{
+                    background: '#f0f0f0', border: 'none',
+                    fontSize: '20px', cursor: 'pointer',
+                    padding: '4px 8px', borderRadius: '4px',
+                  }}
+                >
+                  ✕
+                </button>
               </div>
+              <TripSummaryCard trip={tripForCard} riderId={selectedTrip.riderId} />
+              <CoachingTipCard
+                ecoScore={selectedTrip.score}
+                tripData={selectedTrip}
+                riderId={selectedTrip.riderId}
+                watcherId="parent"
+              />
             </div>
           </div>
         );
       })()}
 
-      {/* SOS alert modal — shown when a rider triggers SOS */}
       {sosRider && (
         <SOSAlertModal
           sosRider={sosRider}

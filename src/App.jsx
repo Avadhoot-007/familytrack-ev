@@ -20,14 +20,13 @@ export default function App() {
         maxWidth: '400px', margin: '100px auto',
         fontFamily: 'Arial, sans-serif',
       }}>
-        {/* Title row: emoji + text side-by-side to prevent overlap */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           gap: '12px', marginBottom: '12px',
         }}>
           <span style={{ fontSize: '36px', lineHeight: 1 }}>🚴</span>
           <span style={{
-            fontSize: '28px', fontWeight: '600', letterSpacing: '0',
+            fontSize: '28px', fontWeight: '600',
             color: 'inherit', lineHeight: 1,
           }}>
             FamilyTrack EV
@@ -36,7 +35,7 @@ export default function App() {
 
         <p style={{
           fontSize: '18px', fontWeight: '500', margin: '0 0 20px',
-          color: 'inherit', letterSpacing: '0',
+          color: 'inherit',
         }}>
           Enter Your Name
         </p>
@@ -107,12 +106,18 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{ display: view === 'rider' ? 'block' : 'none' }}>
-        <RiderDashboard riderName={riderName} />
-      </div>
-      <div style={{ display: view === 'watcher' ? 'block' : 'none' }}>
-        <WatcherDashboard />
-      </div>
+      {/* 
+        FIX: Use conditional rendering instead of display:none/block.
+        Leaflet calculates tile layout from the container's computed dimensions
+        at mount time. When the container has display:none, its size is 0×0,
+        so tiles render offset/broken and invalidateSize() can't fully recover.
+        Mounting only when the tab is active guarantees a visible container.
+        
+        The `key` prop ensures a full remount (and fresh map init) each time
+        the user switches to the watcher tab, preventing stale tile state.
+      */}
+      {view === 'rider' && <RiderDashboard riderName={riderName} />}
+      {view === 'watcher' && <WatcherDashboard key="watcher-map" />}
     </div>
   );
 }
