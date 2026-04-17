@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ref, set, update } from 'firebase/database';
 import { db } from '../config/firebase';
 import './SOSModal.css';
@@ -7,6 +7,7 @@ export default function SOSModal({ isOpen, onClose, riderName, riderId, location
   const [isActivating, setIsActivating] = useState(false);
   const [sosActivated, setSOSActivated] = useState(false);
   const [countdownTimer, setCountdownTimer] = useState(5);
+  const isHoldingRef = useRef(false);
   const [emergencyContacts] = useState([
     { id: 1, name: 'Mom', phone: '+91-98765-43210', icon: '👩' },
     { id: 2, name: 'Dad', phone: '+91-87654-32109', icon: '👨' },
@@ -20,6 +21,21 @@ export default function SOSModal({ isOpen, onClose, riderName, riderId, location
     }, 1000);
     return () => clearTimeout(timer);
   }, [isActivating, countdownTimer]);
+
+  useEffect(() => {
+    if (!isActivating) return;
+    
+    const handlePointerUp = () => {
+      if (isHoldingRef.current) {
+        isHoldingRef.current = false;
+        setIsActivating(false);
+        setCountdownTimer(5);
+      }
+    };
+
+    document.addEventListener('pointerup', handlePointerUp);
+    return () => document.removeEventListener('pointerup', handlePointerUp);
+  }, [isActivating]);
 
   useEffect(() => {
     if (isActivating && countdownTimer === 0) {
@@ -53,11 +69,6 @@ export default function SOSModal({ isOpen, onClose, riderName, riderId, location
       alert(`Error: ${error.message}`);
       setIsActivating(false);
     }
-  };
-
-  const handleCancel = () => {
-    setIsActivating(false);
-    setCountdownTimer(5);
   };
 
   const handleClose = () => {
@@ -110,11 +121,10 @@ export default function SOSModal({ isOpen, onClose, riderName, riderId, location
 
             <button
               className="sos-activate-btn"
-              onMouseDown={() => setIsActivating(true)}
-              onMouseUp={handleCancel}
-              onTouchStart={() => setIsActivating(true)}
-              onTouchEnd={handleCancel}
-              onTouchCancel={handleCancel}
+              onPointerDown={() => {
+                isHoldingRef.current = true;
+                setIsActivating(true);
+              }}
             >
               🆘 Hold to Activate SOS
             </button>

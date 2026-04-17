@@ -107,11 +107,12 @@ export default function App() {
         </div>
       </div>
 
-      {view === 'rider' ? (
+      <div style={{ display: view === 'rider' ? 'block' : 'none' }}>
         <RiderDashboard riderName={riderName} />
-      ) : (
+      </div>
+      <div style={{ display: view === 'watcher' ? 'block' : 'none' }}>
         <WatcherDashboard />
-      )}
+      </div>
     </div>
   );
 }

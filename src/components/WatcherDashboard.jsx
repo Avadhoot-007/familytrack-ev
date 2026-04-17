@@ -291,25 +291,21 @@ export default function WatcherDashboard() {
 
       // ── SOS detection ──────────────────────────────────────────────────────
       Object.entries(data).forEach(([riderId, riderData]) => {
-        // sosTriggered must be explicitly true and not yet resolved
-        if (riderData.sosTriggered === true && !riderData.sosResolved) {
-          if (!sosProcessedRef.current[riderId]) {
-            sosProcessedRef.current[riderId] = true;
-            setSosRider({ riderId, ...riderData });
-            setAlerts((prev) => [
-              {
-                id: `${riderId}-sos-${Date.now()}`,
-                message: `🚨 SOS ALERT from ${riderData.sosRiderName || riderData.location?.name || riderId}!`,
-                type: 'danger',
-              },
-              ...prev.slice(0, 49),
-            ]);
-          }
-        } else {
-          // SOS was resolved — allow it to fire again next time
-          if (sosProcessedRef.current[riderId]) {
-            sosProcessedRef.current[riderId] = false;
-          }
+        // sosTriggered must be explicitly true and not yet processed
+        if (riderData.sosTriggered === true && !sosProcessedRef.current[riderId]) {
+          sosProcessedRef.current[riderId] = true;
+          setSosRider({ riderId, ...riderData });
+          setAlerts((prev) => [
+            {
+              id: `${riderId}-sos-${Date.now()}`,
+              message: `🚨 SOS ALERT from ${riderData.sosRiderName || riderData.location?.name || riderId}!`,
+              type: 'danger',
+            },
+            ...prev.slice(0, 49),
+          ]);
+        } else if (riderData.sosTriggered === false) {
+          // SOS was cleared — allow it to fire again next time
+          sosProcessedRef.current[riderId] = false;
         }
       });
       // ──────────────────────────────────────────────────────────────────────
@@ -419,8 +415,6 @@ export default function WatcherDashboard() {
     try {
       await update(ref(db, `riders/${sosRider.riderId}`), {
         sosTriggered: false,
-        sosResolved: true,
-        sosResolvedTime: new Date().toISOString(),
       });
       sosProcessedRef.current[sosRider.riderId] = false;
       setSosRider(null);
