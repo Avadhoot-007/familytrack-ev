@@ -3,6 +3,8 @@ import { ref, onValue, update } from 'firebase/database';
 import { db } from '../config/firebase';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import './WatcherDashboard.css';
 import { isInsideGeofence } from '../services/locationService';
 import { geofences } from '../data/geofences';
 import TripSummaryCard from './TripSummaryCard.jsx';
@@ -44,6 +46,14 @@ function RecenterMap({ lat, lon }) {
       map.setView([lat, lon], 13);
     }
   }, [lat, lon, map]);
+  return null;
+}
+
+function MapReady() {
+  const map = useMap();
+  useEffect(() => {
+    setTimeout(() => map.invalidateSize(), 100);
+  }, [map]);
   return null;
 }
 
@@ -458,12 +468,15 @@ export default function WatcherDashboard() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '30px' }}>
         {/* Map */}
-        <div style={{ height: '400px' }}>
-          <MapContainer center={mapCenter} zoom={13} style={{ width: '100%', height: '400px' }}>
+        <div style={{ flex: 1, minHeight: '400px', position: 'relative' }}>
+          <MapContainer center={mapCenter} zoom={13} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' }}>
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               attribution='&copy; OpenStreetMap contributors'
+              maxZoom={19}
+              crossOrigin={true}
             />
+            <MapReady />
             {firstOnlineRider && validCoords(firstOnlineRider.lat, firstOnlineRider.lon) && (
               <RecenterMap lat={firstOnlineRider.lat} lon={firstOnlineRider.lon} />
             )}
