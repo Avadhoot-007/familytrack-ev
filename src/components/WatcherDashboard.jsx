@@ -39,25 +39,15 @@ const createDivIcon = (color, label) =>
     popupAnchor: [0, -30],
   });
 
-// ── FIX: MapController replaces both MapReady and RecenterMap ────────────────
-// - Captures the real Leaflet map instance via useMap() and exposes it through
-//   a callback ref so the parent can call setView() for the Recenter button.
-// - Calls invalidateSize() only once, after the map's own 'load' event fires,
-//   which is more reliable than a fixed setTimeout.
-// - Recenter is now MANUAL ONLY — it no longer auto-pans on every data update,
-//   which was fighting the user's own panning.
 function MapController({ onMapReady }) {
   const map = useMap();
 
   useEffect(() => {
-    // Pass the live Leaflet instance up to the parent
     if (onMapReady) onMapReady(map);
 
-    // invalidateSize after the map finishes its first tile load
     const handleLoad = () => map.invalidateSize();
     map.once('load', handleLoad);
 
-    // Fallback: also run after a short delay in case 'load' already fired
     const fallback = setTimeout(() => map.invalidateSize(), 300);
 
     return () => {
@@ -68,17 +58,30 @@ function MapController({ onMapReady }) {
 
   return null;
 }
-// ─────────────────────────────────────────────────────────────────────────────
 
 // ── Watcher-side SOS alert modal ──────────────────────────────────────────────
+// FIX: sosLocation can be written by the rider as either:
+//   { lat, lon }        — legacy / direct writes
+//   { latitude, longitude } — from the Geolocation API via SOSModal.jsx
+// We normalise both so the Google Maps button always appears when coords exist.
 function SOSAlertModal({ sosRider, onResolve, onClose }) {
   if (!sosRider) return null;
 
-  const loc = sosRider.sosLocation;
-  const mapsUrl =
-    loc && validCoords(loc.lat, loc.lon)
-      ? `https://www.google.com/maps?q=${loc.lat},${loc.lon}`
-      : null;
+  const raw = sosRider.sosLocation;
+
+  // Normalise: accept lat/lon OR latitude/longitude
+  const loc = raw
+    ? {
+        lat: raw.lat ?? raw.latitude ?? null,
+        lon: raw.lon ?? raw.lng ?? raw.longitude ?? null,
+      }
+    : null;
+
+  const hasCoords = loc && validCoords(loc.lat, loc.lon);
+
+  const mapsUrl = hasCoords
+    ? `https://www.google.com/maps?q=${loc.lat},${loc.lon}`
+    : null;
 
   return (
     <div className="sos-modal">
@@ -95,7 +98,7 @@ function SOSAlertModal({ sosRider, onResolve, onClose }) {
               {new Date(sosRider.sosTimestamp).toLocaleTimeString()}
             </p>
           )}
-          {loc && validCoords(loc.lat, loc.lon) ? (
+          {hasCoords ? (
             <p>📍 <strong>Location:</strong> {Number(loc.lat).toFixed(4)}, {Number(loc.lon).toFixed(4)}</p>
           ) : (
             <p>📍 <strong>Location:</strong> Not available</p>
@@ -106,10 +109,18 @@ function SOSAlertModal({ sosRider, onResolve, onClose }) {
         </div>
 
         <div className="sos-button-group">
-          {mapsUrl && (
+          {mapsUrl ? (
             <a href={mapsUrl} target="_blank" rel="noreferrer" className="maps-btn">
               📍 Open in Google Maps
             </a>
+          ) : (
+            <div style={{
+              padding: '12px', background: 'rgba(255,255,255,0.05)',
+              borderRadius: '6px', fontSize: '13px', color: '#999',
+              textAlign: 'center', border: '1px solid #444',
+            }}>
+              📍 Location unavailable
+            </div>
           )}
           <button onClick={onResolve} className="resolve-btn">
             ✓ Mark as Resolved
@@ -247,8 +258,6 @@ export default function WatcherDashboard() {
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [sosRider, setSosRider] = useState(null);
 
-  // FIX: mapRef now holds the actual Leaflet map instance (set by MapController
-  // via onMapReady callback) instead of the DOM node from MapContainer's ref.
   const mapRef = useRef(null);
 
   const riderIndexMap = useRef({});
@@ -256,7 +265,6 @@ export default function WatcherDashboard() {
   const previousInsideRef = useRef({});
   const sosProcessedRef = useRef({});
 
-  // FIX: stable callback so MapController's useEffect doesn't re-run on renders
   const handleMapReady = useCallback((mapInstance) => {
     mapRef.current = mapInstance;
   }, []);
@@ -268,7 +276,6 @@ export default function WatcherDashboard() {
       const data = snapshot.val();
       if (!data) return;
 
-      // Assign colours to new riders
       Object.keys(data).forEach((riderId) => {
         if (riderIndexMap.current[riderId] === undefined) {
           const idx = Object.keys(riderIndexMap.current).length;
@@ -296,7 +303,6 @@ export default function WatcherDashboard() {
           sosProcessedRef.current[riderId] = false;
         }
       });
-      // ──────────────────────────────────────────────────────────────────────
 
       // ── Geofence alerts ───────────────────────────────────────────────────
       Object.entries(data).forEach(([riderId, riderData]) => {
@@ -330,7 +336,6 @@ export default function WatcherDashboard() {
           }
         });
       });
-      // ──────────────────────────────────────────────────────────────────────
 
       // ── Trips ─────────────────────────────────────────────────────────────
       const trips = Object.entries(data).flatMap(([riderId, riderData]) => {
@@ -346,7 +351,6 @@ export default function WatcherDashboard() {
       });
       setAllTrips(trips);
 
-      // Centre map on first online rider (stored for Recenter button, not auto-pan)
       const onlineEntry = Object.entries(data).find(([, r]) => {
         if (r.status !== 'online' || !r.location) return false;
         const lon = r.location.lon ?? r.location.lng;
@@ -354,11 +358,8 @@ export default function WatcherDashboard() {
       });
       if (onlineEntry) {
         const loc = onlineEntry[1].location;
-        // FIX: Only set firstOnlineRider once so Recenter snaps to the first
-        // known online rider rather than jumping every time Firebase updates.
         setFirstOnlineRider((prev) => prev ?? { ...loc, lon: loc.lon ?? loc.lng });
       }
-      // ──────────────────────────────────────────────────────────────────────
     });
 
     return () => unsubscribe();
@@ -414,9 +415,6 @@ export default function WatcherDashboard() {
 
   const handleSOSDismiss = () => setSosRider(null);
 
-  // FIX: mapRef.current is now the real Leaflet instance, so setView works correctly.
-  // Previously mapRef pointed to the DOM element (MapContainer's forwardRef target),
-  // which has no setView method — the button silently did nothing.
   const handleRecenterMap = () => {
     if (!mapRef.current) return;
     if (firstOnlineRider && validCoords(firstOnlineRider.lat, firstOnlineRider.lon)) {
@@ -455,9 +453,6 @@ export default function WatcherDashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '30px' }}>
         {/* Map */}
         <div className="map-wrapper">
-          {/* FIX: Recenter button moved outside MapContainer so it doesn't
-              interfere with Leaflet's internal DOM. z-index kept at 400 to
-              sit above tiles but below popups (z-index 600+). */}
           <button
             onClick={handleRecenterMap}
             className="recenter-btn"
@@ -466,8 +461,6 @@ export default function WatcherDashboard() {
             📍 Recenter
           </button>
 
-          {/* FIX: No ref prop on MapContainer — the real instance comes from
-              MapController's useMap() via the onMapReady callback instead. */}
           <MapContainer center={mapCenter} zoom={13} className="map-container">
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -476,7 +469,6 @@ export default function WatcherDashboard() {
               crossOrigin={true}
             />
 
-            {/* FIX: Single controller handles both map-ready and recenter logic */}
             <MapController onMapReady={handleMapReady} />
 
             {onlineRiders.map(([riderId, riderData]) => {
