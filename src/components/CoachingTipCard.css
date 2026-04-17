@@ -1,33 +1,270 @@
+/* CoachingTipCard.css */
+
 .coaching-tip-card {
-  background: #f9f9f9;
-  border: 1px solid #ddd;
+  background: #1a1a1a;
+  border: 1px solid #333;
   border-radius: 8px;
-  padding: 16px;
-  margin-top: 16px;
+  padding: 20px;
+  margin: 20px 0;
+  font-family: Arial, sans-serif;
+}
+
+.coaching-tip-card h2 {
+  color: #ffffff;
+  margin-bottom: 10px;
+  font-size: 24px;
 }
 
 .coaching-tip-card h3 {
-  margin: 0 0 12px 0;
+  color: #ffffff;
   font-size: 16px;
-  color: #333;
+  margin-bottom: 15px;
 }
 
 .coaching-tip-card p {
-  margin: 8px 0;
+  color: #cccccc;
   font-size: 14px;
-  color: #666;
+  margin: 8px 0;
   line-height: 1.5;
 }
 
 .coaching-tip-card .tip-score {
   font-weight: bold;
-  color: #1e88e5;
+  color: #64b5f6;
 }
 
 .coaching-tip-card .tip-warning {
-  color: #dc3545;
+  color: #ef5350;
 }
 
 .coaching-tip-card .tip-success {
-  color: #28a745;
+  color: #66bb6a;
+}
+
+.eco-context {
+  color: #999;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+/* Tips Section */
+.tips-section,
+.sent-tips-section {
+  margin-bottom: 30px;
+}
+
+.tips-section h3,
+.sent-tips-section h3 {
+  color: #ffffff;
+  font-size: 16px;
+  margin-bottom: 15px;
+}
+
+.no-tips {
+  color: #888;
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+  background: #2a2a2a;
+  border-radius: 6px;
+}
+
+/* Tips List */
+.tips-list,
+.sent-tips-list {
+  display: grid;
+  gap: 15px;
+}
+
+.tip-card,
+.sent-tip-card {
+  padding: 15px;
+  background: #2a2a2a;
+  border-radius: 6px;
+  border: 1px solid #444;
+}
+
+.tip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.tip-header h4 {
+  margin: 0;
+  font-size: 16px;
+  color: #ffffff;
+  flex: 1;
+}
+
+.priority-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: white;
+  font-size: 11px;
+  font-weight: bold;
+  white-space: nowrap;
+  margin-left: 10px;
+}
+
+.tip-message {
+  color: #cccccc;
+  font-size: 14px;
+  margin: 10px 0;
+}
+
+.btn-send-tip {
+  background: #4CAF50;
+  color: white;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-send-tip:hover {
+  background: #45a049;
+}
+
+/* Sent Tips */
+.sent-tip-card {
+  padding: 15px;
+  background: #1a3a1a;
+  border-left: 4px solid #4CAF50;
+  border: 1px solid #2a5a2a;
+}
+
+.sent-tip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.sent-tip-header h5 {
+  margin: 0;
+  font-size: 14px;
+  color: #66bb6a;
+  flex: 1;
+}
+
+.read-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  margin-left: 10px;
+}
+
+.read-badge.read {
+  background: #4CAF50;
+  color: white;
+}
+
+.read-badge.unread {
+  background: #FFC107;
+  color: white;
+}
+
+.sent-tip-message {
+  color: #cccccc;
+  font-size: 13px;
+  margin: 8px 0;
+}
+
+.sent-tip-meta {
+  color: #777;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: #1a1a1a;
+  padding: 30px;
+  border-radius: 8px;
+  max-width: 400px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  border: 1px solid #333;
+  color: #e0e0e0;
+}
+
+.modal-content h3 {
+  margin-top: 0;
+  color: #ffffff;
+}
+
+.modal-tip-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #66bb6a;
+  margin: 15px 0 10px 0;
+}
+
+.modal-tip-message {
+  color: #cccccc;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.btn-cancel {
+  background: #444;
+  color: #e0e0e0;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.btn-cancel:hover {
+  background: #555;
+}
+
+.btn-confirm {
+  background: #4CAF50;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.btn-confirm:hover:not(:disabled) {
+  background: #45a049;
+}
+
+.btn-confirm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .modal-content {
+    width: 90%;
+  }
 }
