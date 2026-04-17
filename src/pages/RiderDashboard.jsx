@@ -122,25 +122,30 @@ export default function RiderDashboard({ riderName }) {
       watchIdRef.current = null;
     }
 
-    const tripId = `trip-${Date.now()}`;
-    const tripRef = ref(db, `riders/${riderId}/trips/${tripId}`);
-    const tripEcoScore = calculateTripEcoScore(readings);
+    try {
+      const tripId = `trip-${Date.now()}`;
+      const tripRef = ref(db, `riders/${riderId}/trips/${tripId}`);
+      const tripEcoScore = calculateTripEcoScore(readings);
 
-    await set(tripRef, {
-      timestamp: new Date().toISOString(),
-      distanceKm: parseFloat(tripDistance.toFixed(2)),
-      avgSpeedKmh: parseFloat(avgSpeed.toFixed(1)),
-      score: tripEcoScore,
-      readingCount: readings.length,
-      durationSeconds: tripDuration,
-      startLat: location?.latitude ?? null,
-      startLon: location?.longitude ?? null,
-    });
+      await set(tripRef, {
+        timestamp: new Date().toISOString(),
+        distanceKm: parseFloat(tripDistance.toFixed(2)),
+        avgSpeedKmh: parseFloat(avgSpeed.toFixed(1)),
+        score: tripEcoScore,
+        readingCount: readings.length,
+        durationSeconds: tripDuration,
+        startLat: location?.latitude ?? null,
+        startLon: location?.longitude ?? null,
+      });
 
-    const statusRef = ref(db, `riders/${riderId}/status`);
-    set(statusRef, 'offline');
+      const statusRef = ref(db, `riders/${riderId}/status`);
+      await set(statusRef, 'offline');
 
-    setReadings([]);
+      setReadings([]);
+    } catch (error) {
+      console.error('Error saving trip:', error);
+      setError(`Failed to save trip: ${error.message}`);
+    }
   };
 
   const formatDuration = (seconds) => {

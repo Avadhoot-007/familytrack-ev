@@ -139,14 +139,14 @@ export default function SOSModal({ isOpen, onClose, riderName, riderId, location
               <h2>SOS Activated!</h2>
 
               <div className="sos-details">
-                <p><strong>Rider:</strong> {riderName}</p>
-                {location && (
+                <p><strong>Rider:</strong> {riderName || riderId || 'Unknown'}</p>
+                {location && location.latitude != null && location.longitude != null && (
                   <>
                     <p><strong>Lat:</strong> {location.latitude.toFixed(4)}</p>
                     <p><strong>Lon:</strong> {location.longitude.toFixed(4)}</p>
                   </>
                 )}
-                <p><strong>Battery:</strong> {battery}%</p>
+                <p><strong>Battery:</strong> {battery != null ? `${battery}%` : 'N/A'}</p>
               </div>
 
               <div className="sos-alert-box">

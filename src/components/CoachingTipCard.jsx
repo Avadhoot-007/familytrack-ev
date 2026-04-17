@@ -24,11 +24,13 @@ export default function CoachingTipCard({ ecoScore, tripData, riderId, watcherId
     onValue(tipsRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const tipsList = Object.values(data).map((tip, idx) => ({
+        const tipsList = Object.entries(data).map(([key, tip]) => ({
           ...tip,
-          id: idx,
+          id: key,
         }));
         setSentTips(tipsList.sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt)));
+      } else {
+        setSentTips([]);
       }
     });
   }, [riderId]);
@@ -124,8 +126,8 @@ export default function CoachingTipCard({ ecoScore, tripData, riderId, watcherId
           <p className="no-tips">No tips sent yet.</p>
         ) : (
           <div className="sent-tips-list">
-            {sentTips.map((sentTip, idx) => (
-              <div key={idx} className="sent-tip-card">
+            {sentTips.map((sentTip) => (
+              <div key={sentTip.id} className="sent-tip-card">
                 <div className="sent-tip-header">
                   <h5>{getTipIcon(sentTip.category)} {sentTip.title}</h5>
                   <span className={`read-badge ${sentTip.read ? 'read' : 'unread'}`}>
@@ -143,6 +145,21 @@ export default function CoachingTipCard({ ecoScore, tripData, riderId, watcherId
                       minute: '2-digit',
                     })}
                   </small>
+                  <button
+                    onClick={() => clearSentTip(sentTip.id)}
+                    style={{
+                      marginLeft: '10px',
+                      background: '#f44336',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '4px 8px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                    }}
+                  >
+                    🗑️ Clear
+                  </button>
                 </div>
               </div>
             ))}

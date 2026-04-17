@@ -1,4 +1,8 @@
 export const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  if (typeof lat1 !== 'number' || typeof lon1 !== 'number' ||
+      typeof lat2 !== 'number' || typeof lon2 !== 'number') {
+    throw new Error('All coordinates must be numbers');
+  }
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
@@ -18,5 +22,8 @@ export const isInsideGeofence = (riderLat, riderLon, centerLat, centerLon, radiu
 };
 
 export const sanitizeRiderId = (name) => {
+  if (typeof name !== 'string') {
+    throw new Error('Name must be a string');
+  }
   return name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 };

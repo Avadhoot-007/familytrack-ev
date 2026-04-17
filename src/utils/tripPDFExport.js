@@ -76,7 +76,7 @@ ${ecoScore >= 80
   : '(Aggressive riding detected. Smooth acceleration saves fuel.)'}
 Tj
 0 -18 Td
-(Projected Range: ${(100 / batteryUsed * durationMins / 60).toFixed(1)} hours at full battery) Tj
+(Projected Range: ${batteryUsed > 0 ? (100 / batteryUsed * durationMins / 60).toFixed(1) : 'N/A'} hours at full battery) Tj
 ET
 endstream
 endobj
@@ -133,7 +133,7 @@ export const generateTripSummary = (tripData) => {
     },
     efficiency: {
       rating: ecoScore >= 80 ? 'Excellent' : ecoScore >= 60 ? 'Good' : 'Poor',
-      range: (100 / batteryUsed * duration / 60).toFixed(0),
+      range: batteryUsed > 0 ? (100 / batteryUsed * duration / 60).toFixed(0) : 'N/A',
       tip: ecoScore >= 80 
         ? 'Keep smooth acceleration'
         : ecoScore >= 60

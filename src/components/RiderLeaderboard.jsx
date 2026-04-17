@@ -47,6 +47,10 @@ export default function RiderLeaderboard() {
         const bestScore = Math.max(...tripsList.map((t) => t.score || 0));
         const worstScore = Math.min(...tripsList.map((t) => t.score || 0));
 
+        const timestamps = tripsList.map((t) => new Date(t.timestamp).getTime()).filter(t => !isNaN(t));
+        if (timestamps.length === 0) continue;
+        const lastTripTime = Math.max(...timestamps);
+
         leaderboardData.push({
           riderId,
           name: riderData.location?.name || riderId,
@@ -99,6 +103,7 @@ export default function RiderLeaderboard() {
 
   const formatTime = (timestamp) => {
     const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return 'Invalid time';
     const now = Date.now();
     const diff = now - date.getTime();
     const hours = Math.floor(diff / (1000 * 60 * 60));
