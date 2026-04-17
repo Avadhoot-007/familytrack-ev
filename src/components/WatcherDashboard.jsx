@@ -154,8 +154,8 @@ function TripStatsSummary({ trips, filterDays }) {
   const totalDistance = filtered.reduce((s, t) => s + (Number(t.distanceKm) || 0), 0);
   const avgSpeed = filtered.reduce((s, t) => s + (Number(t.avgSpeedKmh) || 0), 0) / totalTrips;
   const avgScore = filtered.reduce((s, t) => s + (Number(t.score) || 0), 0) / totalTrips;
-  const bestScore = Math.max(...filtered.map((t) => Number(t.score) || 0));
-  const worstScore = Math.min(...filtered.map((t) => Number(t.score) || 0));
+  const bestScore = Math.max(...filtered.map((t) => Number(t.score || 0)));
+  const worstScore = Math.min(...filtered.map((t) => Number(t.score || 0)));
 
   const StatBox = ({ emoji, label, value }) => (
     <div style={{
@@ -585,50 +585,60 @@ export default function WatcherDashboard() {
       </div>
 
       {/* Trip detail modal */}
-      {selectedTrip && (
-        <div
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 1000,
-          }}
-          onClick={() => setSelectedTrip(null)}
-        >
+      {selectedTrip && (() => {
+        const tripForCard = {
+          distance: selectedTrip.distanceKm || 0,
+          duration: selectedTrip.durationSeconds || 0,
+          ecoScore: selectedTrip.score || 0,
+          batteryUsed: 15,
+          batteryRemaining: 85,
+          timestamp: selectedTrip.timestamp,
+        };
+        return (
           <div
             style={{
-              background: 'white', borderRadius: '8px',
-              maxWidth: '800px', width: '90%',
-              maxHeight: '90vh', overflowY: 'auto',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              background: 'rgba(0,0,0,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 1000,
             }}
-            onClick={(e) => e.stopPropagation()}
+            onClick={() => setSelectedTrip(null)}
           >
-            <div style={{ padding: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h2>{selectedTrip.riderName || selectedTrip.riderId}</h2>
-                <button
-                  onClick={() => setSelectedTrip(null)}
-                  style={{
-                    background: '#f0f0f0', border: 'none',
-                    fontSize: '20px', cursor: 'pointer',
-                    padding: '4px 8px', borderRadius: '4px',
-                  }}
-                >
-                  ✕
-                </button>
+            <div
+              style={{
+                background: 'white', borderRadius: '8px',
+                maxWidth: '800px', width: '90%',
+                maxHeight: '90vh', overflowY: 'auto',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ padding: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h2>{selectedTrip.riderName || selectedTrip.riderId}</h2>
+                  <button
+                    onClick={() => setSelectedTrip(null)}
+                    style={{
+                      background: '#f0f0f0', border: 'none',
+                      fontSize: '20px', cursor: 'pointer',
+                      padding: '4px 8px', borderRadius: '4px',
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <TripSummaryCard trip={tripForCard} riderId={selectedTrip.riderId} />
+                <CoachingTipCard
+                  ecoScore={selectedTrip.score}
+                  tripData={selectedTrip}
+                  riderId={selectedTrip.riderId}
+                  watcherId="parent"
+                />
               </div>
-              <TripSummaryCard trip={selectedTrip} riderId={selectedTrip.riderId} />
-              <CoachingTipCard
-                ecoScore={selectedTrip.score}
-                tripData={selectedTrip}
-                riderId={selectedTrip.riderId}
-                watcherId="parent"
-              />
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* SOS alert modal — shown when a rider triggers SOS */}
       {sosRider && (

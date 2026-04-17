@@ -6,7 +6,10 @@ import './TripSummaryCard.css';
 export default function TripSummaryCard({ trip, riderId }) {
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Trip stats calculation
+  // Guard clause for missing trip data
+  if (!trip) {
+    return <div className="trip-summary-card">No trip data available</div>;
+  }
   const distance = trip.distance || 8.2; // km
   const duration = trip.duration || 12; // minutes
   const ecoScore = trip.ecoScore || 82; // 0-100
@@ -17,6 +20,14 @@ export default function TripSummaryCard({ trip, riderId }) {
   const avgSpeed = distance > 0 ? ((distance / duration) * 60).toFixed(1) : 0; // km/h
   const ecoRating = ecoScore >= 80 ? 'Excellent' : ecoScore >= 60 ? 'Good' : 'Poor';
   const ecoColor = ecoScore >= 80 ? '#4CAF50' : ecoScore >= 60 ? '#FFC107' : '#f44336';
+
+  // Safe battery projections
+  const batteryProjection = batteryUsed > 0 ? (100 / batteryUsed * duration).toFixed(0) : 'N/A';
+  const ecoProjection = batteryUsed > 0 ? (100 / batteryUsed * duration * 1.3).toFixed(0) : 'N/A';
+
+  // Safe date formatting
+  const tripDate = new Date(timestamp);
+  const formattedDate = isNaN(tripDate.getTime()) ? 'Invalid Date' : tripDate.toLocaleDateString();
 
   // Generate PDF (client-side, text-based)
   const generatePDF = () => {
@@ -43,7 +54,7 @@ BT
 (FamilyTrack EV - Trip Summary) Tj
 0 -50 Td
 /F1 12 Tf
-(Trip Date: ${new Date(timestamp).toLocaleDateString()}) Tj
+(Trip Date: ${formattedDate}) Tj
 0 -25 Td
 (Duration: ${duration} minutes) Tj
 0 -20 Td
@@ -62,7 +73,7 @@ BT
 0 -20 Td
 ${ecoScore >= 80 ? '(Amazing eco-driving! Keep smooth acceleration.)' : '(Tip: Cruise at 40 km/h for better efficiency.)'} Tj
 0 -20 Td
-(Battery Projection: At this rate, 100% lasts ~${(100 / batteryUsed * duration).toFixed(0)} minutes) Tj
+(Battery Projection: At this rate, 100% lasts ~${batteryProjection} minutes) Tj
 ET
 endstream
 endobj
@@ -100,6 +111,10 @@ startxref
 
   // Save trip to Firebase
   const saveTrip = async () => {
+    if (!riderId) {
+      alert('Rider ID is required to save the trip.');
+      return;
+    }
     try {
       const tripRef = ref(db, `riders/${riderId}/trips/${Date.now()}`);
       await set(tripRef, {
@@ -168,11 +183,11 @@ startxref
       <div className="battery-projection">
         <h3>Battery Projection</h3>
         <p>
-          At current riding style: <strong>{(100 / batteryUsed * duration).toFixed(0)} minutes</strong> on full charge (100%)
+          At current riding style: <strong>{batteryProjection} minutes</strong> on full charge (100%)
         </p>
         <p className="projection-tip">
           💡 Eco-style riding could extend this to{' '}
-          <strong>{(100 / batteryUsed * duration * 1.3).toFixed(0)} minutes</strong>
+          <strong>{ecoProjection} minutes</strong>
         </p>
       </div>
 
