@@ -94,6 +94,10 @@ export default function RiderDashboard({ riderName }) {
 
     watchIdRef.current = id;
 
+    // FIX: This cleanup only runs when isSharing becomes false (user stops
+    // the trip) — NOT on component unmount, because RiderDashboard is now
+    // always mounted. This means switching to Watcher view no longer
+    // triggers this cleanup and the GPS watcher stays alive.
     return () => {
       navigator.geolocation.clearWatch(id);
       watchIdRef.current = null;
@@ -117,10 +121,11 @@ export default function RiderDashboard({ riderName }) {
     setIsSharing(false);
     setTripStarted(false);
 
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
+    // FIX: Removed redundant manual clearWatch from here.
+    // Setting isSharing to false triggers the useEffect cleanup above,
+    // which already calls clearWatch. Calling it twice was harmless but
+    // unnecessary. The useEffect cleanup is now the single source of truth
+    // for stopping the GPS watcher.
 
     try {
       const tripId = `trip-${Date.now()}`;

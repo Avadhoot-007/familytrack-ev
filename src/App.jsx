@@ -106,17 +106,21 @@ export default function App() {
         </div>
       </div>
 
-      {/* 
-        FIX: Use conditional rendering instead of display:none/block.
-        Leaflet calculates tile layout from the container's computed dimensions
-        at mount time. When the container has display:none, its size is 0×0,
-        so tiles render offset/broken and invalidateSize() can't fully recover.
-        Mounting only when the tab is active guarantees a visible container.
-        
-        The `key` prop ensures a full remount (and fresh map init) each time
-        the user switches to the watcher tab, preventing stale tile state.
+      {/*
+        FIX: RiderDashboard is always mounted and never unmounted.
+        Switching to Watcher view only hides it visually via display:none.
+        This preserves all trip state (isSharing, GPS watcher, intervals,
+        Firebase sync) across tab switches — nothing gets cancelled.
+
+        RiderDashboard has no Leaflet map, so display:none is safe here.
+
+        WatcherDashboard still remounts fresh each time (key="watcher-map")
+        to guarantee a clean Leaflet map init with a visible container.
       */}
-      {view === 'rider' && <RiderDashboard riderName={riderName} />}
+      <div style={{ display: view === 'rider' ? 'block' : 'none' }}>
+        <RiderDashboard riderName={riderName} />
+      </div>
+
       {view === 'watcher' && <WatcherDashboard key="watcher-map" />}
     </div>
   );
