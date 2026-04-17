@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { ref, set } from 'firebase/database';
 import { db } from '../config/firebase';
 import { generateSensorReading, calculateEcoScore, calculateTripEcoScore, getEcoScoreColor } from '../utils/ecoScoring';
+import RiderLeaderboard from "../components/RiderLeaderboard";
+import SOSModal from "../components/SOSModal";
 import './RiderDashboard.css';
 
 export default function RiderDashboard({ riderName }) {
@@ -16,6 +18,8 @@ export default function RiderDashboard({ riderName }) {
   const [tripDuration, setTripDuration] = useState(0);
   const [tripStarted, setTripStarted] = useState(false);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [sosModalOpen, setSOSModalOpen] = useState(false);
 
   const batteryRef = useRef(battery);
   const watchIdRef = useRef(null);
@@ -25,7 +29,6 @@ export default function RiderDashboard({ riderName }) {
   const riderId = riderName?.toLowerCase().replace(/\s+/g, '-') || 'rider-1';
   const avgSpeed = readingCount > 0 ? speedSum / readingCount : 0;
 
-  // Trip duration timer
   useEffect(() => {
     if (!tripStarted) return;
     const interval = setInterval(() => {
@@ -34,7 +37,6 @@ export default function RiderDashboard({ riderName }) {
     return () => clearInterval(interval);
   }, [tripStarted]);
 
-  // Generate eco-score every 5 seconds during trip
   useEffect(() => {
     if (!isSharing) return;
 
@@ -52,7 +54,6 @@ export default function RiderDashboard({ riderName }) {
     return () => clearInterval(interval);
   }, [isSharing]);
 
-  // watchPosition for continuous GPS + Firebase sync
   useEffect(() => {
     if (!isSharing) return;
 
@@ -152,120 +153,188 @@ export default function RiderDashboard({ riderName }) {
 
   const ecoScoreColor = getEcoScoreColor(ecoScore);
 
+  const ecoCardStyle = {
+    background: 'rgba(0, 0, 0, 0.30)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: '10px',
+    padding: '14px 16px',
+    marginBottom: '16px',
+  };
+
+  const ecoLabelStyle = {
+    fontSize: '14px',
+    color: '#c8e6c9',
+    fontWeight: '600',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  };
+
+  const ecoBarTrackStyle = {
+    background: 'rgba(255, 255, 255, 0.22)',
+    height: '10px',
+    borderRadius: '5px',
+    overflow: 'hidden',
+    marginBottom: '6px',
+  };
+
+  const ecoBarFillStyle = {
+    background: ecoScoreColor.color,
+    width: `${ecoScore}%`,
+    height: '100%',
+    borderRadius: '5px',
+    transition: 'width 0.4s ease, background 0.3s ease',
+  };
+
+  const ecoStatusLabelStyle = {
+    margin: '6px 0 0',
+    fontSize: '13px',
+    color: '#e0e0e0',
+    fontWeight: '500',
+  };
+
   return (
     <div className="rider-dashboard">
-      <h1>🚴 Rider Dashboard</h1>
-
-      <p className="rider-name-badge">{riderName}</p>
-
-      {/* Battery Section */}
-      <div className="battery-section">
-        <p><strong>🔋 Battery: {battery}%</strong></p>
-        <div className="battery-bar">
-          <div
-            className="battery-fill"
-            style={{
-              width: `${battery}%`,
-              backgroundColor: battery > 60 ? '#4CAF50' : battery > 30 ? '#FFC107' : '#f44336',
-            }}
-          />
-        </div>
-        <input
-          type="range" min="0" max="100" value={battery}
-          onChange={(e) => setBattery(Number(e.target.value))}
-          className="battery-slider"
-        />
-      </div>
-
-      {/* Trip Timer */}
-      {tripStarted && (
-        <div className="trip-timer">
-          <p className="timer-label">⏱️ Trip Duration</p>
-          <p className="timer-value">{formatDuration(tripDuration)}</p>
-        </div>
-      )}
-
-      {/* Start/Stop buttons */}
-      <div className="button-group">
+      <div className="dashboard-tabs">
         <button
-          onClick={handleStartSharing}
-          disabled={isSharing}
-          className="btn btn-start"
+          className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+          onClick={() => setActiveTab('dashboard')}
         >
-          {isSharing ? '✓ Sharing...' : '▶️ Start Sharing'}
+          🚴 Dashboard
         </button>
         <button
-          onClick={handleStopSharing}
-          disabled={!isSharing}
-          className="btn btn-stop"
+          className={`tab-btn ${activeTab === 'leaderboard' ? 'active' : ''}`}
+          onClick={() => setActiveTab('leaderboard')}
         >
-          ⏹️ Stop Sharing
+          🏆 Leaderboard
         </button>
       </div>
 
-      {/* SOS Button */}
-      <button className="btn btn-sos">🆘 SOS Emergency</button>
+      {activeTab === 'dashboard' ? (
+        <>
+          <h1>🚴 Rider Dashboard</h1>
 
-      {/* Location Display */}
-      {location && (
-        <div className="location-display">
-          <p>📍 Lat: {location.latitude.toFixed(4)}</p>
-          <p>📍 Lon: {location.longitude.toFixed(4)}</p>
-          <p>📡 Accuracy: ±{Math.round(location.accuracy)} m</p>
-        </div>
-      )}
+          <p className="rider-name-badge">{riderName}</p>
 
-      {/* Error Display */}
-      {error && (
-        <div className="error-box">
-          <p>⚠️ {error}</p>
-        </div>
-      )}
-
-      {/* Live Trip Stats */}
-      {isSharing && (
-        <div className="live-stats">
-          <h3>📊 Live Trip Stats</h3>
-
-          <div className="eco-score-section">
-            <div className="eco-score-header">
-              <span><strong>🌿 Eco-Score</strong></span>
-              <span className="eco-score-value" style={{ color: ecoScoreColor.color }}>
-                {Math.round(ecoScore)}/100
-              </span>
-            </div>
-            <div className="eco-bar">
+          <div className="battery-section">
+            <p><strong>🔋 Battery: {battery}%</strong></p>
+            <div className="battery-bar">
               <div
-                className="eco-fill"
-                style={{ background: ecoScoreColor.color, width: `${ecoScore}%` }}
+                className="battery-fill"
+                style={{
+                  width: `${battery}%`,
+                  backgroundColor: battery > 60 ? '#4CAF50' : battery > 30 ? '#FFC107' : '#f44336',
+                }}
               />
             </div>
-            <p className="eco-label">{ecoScoreColor.label}</p>
+            <input
+              type="range" min="0" max="100" value={battery}
+              onChange={(e) => setBattery(Number(e.target.value))}
+              className="battery-slider"
+            />
           </div>
 
-          <p>📏 Distance: <strong>{tripDistance.toFixed(2)} km</strong></p>
-          <p>⚡ Avg Speed: <strong>{avgSpeed.toFixed(1)} km/h</strong></p>
-        </div>
+          {tripStarted && (
+            <div className="trip-timer">
+              <p className="timer-label">⏱️ Trip Duration</p>
+              <p className="timer-value">{formatDuration(tripDuration)}</p>
+            </div>
+          )}
+
+          <div className="button-group">
+            <button
+              onClick={handleStartSharing}
+              disabled={isSharing}
+              className="btn btn-start"
+            >
+              {isSharing ? '✓ Sharing...' : '▶️ Start Sharing'}
+            </button>
+            <button
+              onClick={handleStopSharing}
+              disabled={!isSharing}
+              className="btn btn-stop"
+            >
+              ⏹️ Stop Sharing
+            </button>
+          </div>
+
+          <button 
+            className="btn btn-sos"
+            onClick={() => setSOSModalOpen(true)}
+          >
+            🆘 SOS Emergency
+          </button>
+
+          {location && (
+            <div className="location-display">
+              <p>📍 Lat: {location.latitude.toFixed(4)}</p>
+              <p>📍 Lon: {location.longitude.toFixed(4)}</p>
+              <p>📡 Accuracy: ±{Math.round(location.accuracy)} m</p>
+            </div>
+          )}
+
+          {error && (
+            <div className="error-box">
+              <p>⚠️ {error}</p>
+            </div>
+          )}
+
+          {isSharing && (
+            <div className="live-stats">
+              <h3>📊 Live Trip Stats</h3>
+
+              <div style={ecoCardStyle}>
+                <div className="eco-score-header">
+                  <span style={ecoLabelStyle}>🌿 Eco-Score</span>
+                  <span
+                    className="eco-score-value"
+                    style={{ color: ecoScoreColor.color }}
+                  >
+                    {Math.round(ecoScore)}/100
+                  </span>
+                </div>
+
+                <div style={ecoBarTrackStyle}>
+                  <div style={ecoBarFillStyle} />
+                </div>
+
+                <p style={ecoStatusLabelStyle}>{ecoScoreColor.label}</p>
+              </div>
+
+              <p>📏 Distance: <strong>{tripDistance.toFixed(2)} km</strong></p>
+              <p>⚡ Avg Speed: <strong>{avgSpeed.toFixed(1)} km/h</strong></p>
+            </div>
+          )}
+
+          <div className="status-box">
+            {isSharing ? (
+              <>
+                <p className="status-active">✓ Location Sharing Active</p>
+                <p className="status-sub">Syncing to Firebase continuously</p>
+              </>
+            ) : (
+              <p className="status-inactive">○ Not Sharing Location</p>
+            )}
+          </div>
+
+          {!isSharing && tripDistance > 0 && (
+            <div className="trip-ended">
+              ✓ Trip ended! Distance: {tripDistance.toFixed(2)} km | Duration: {formatDuration(tripDuration)} | Final Eco-Score: {Math.round(ecoScore)}/100
+            </div>
+          )}
+        </>
+      ) : (
+        <RiderLeaderboard />
       )}
 
-      {/* Status Box */}
-      <div className="status-box">
-        {isSharing ? (
-          <>
-            <p className="status-active">✓ Location Sharing Active</p>
-            <p className="status-sub">Syncing to Firebase continuously</p>
-          </>
-        ) : (
-          <p className="status-inactive">○ Not Sharing Location</p>
-        )}
-      </div>
-
-      {/* Trip Ended Summary */}
-      {!isSharing && tripDistance > 0 && (
-        <div className="trip-ended">
-          ✓ Trip ended! Distance: {tripDistance.toFixed(2)} km | Duration: {formatDuration(tripDuration)} | Final Eco-Score: {Math.round(ecoScore)}/100
-        </div>
-      )}
+      <SOSModal 
+        isOpen={sosModalOpen}
+        onClose={() => setSOSModalOpen(false)}
+        riderName={riderName}
+        riderId={riderId}
+        location={location}
+        battery={battery}
+      />
     </div>
   );
 }

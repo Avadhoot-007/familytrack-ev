@@ -1,71 +1,73 @@
-// src/utils/coachingTips.js
-
 export const generateCoachingTips = (ecoScore, tripData = {}) => {
   const tips = [];
 
-  // Rule 1: Low eco-score
-  if (ecoScore < 60) {
+  if (ecoScore < 40) {
     tips.push({
-      id: 'accel-smooth',
-      title: '🌱 Smooth Acceleration',
-      message: 'Rapid acceleration drains battery fast. Accelerate gently for +20% range.',
+      id: 1,
+      title: 'Smooth Acceleration',
+      message: 'Avoid rapid throttle increases. Gradual acceleration uses 30% less battery.',
+      category: 'throttle',
       priority: 'high',
-      category: 'acceleration',
     });
-  }
-
-  // Rule 2: Speed management
-  if (tripData.maxSpeed > 50 || ecoScore < 70) {
     tips.push({
-      id: 'speed-cruise',
-      title: '⚡ Cruise at 40 km/h',
-      message: 'Optimal speed for battery efficiency. Reduces drag and energy consumption.',
-      priority: tripData.maxSpeed > 55 ? 'high' : 'medium',
-      category: 'speed',
-    });
-  }
-
-  // Rule 3: Braking efficiency
-  if (tripData.harshBrakes > 5 || ecoScore < 65) {
-    tips.push({
-      id: 'brake-smooth',
-      title: '🛑 Smooth Braking',
-      message: 'Anticipate stops. Brake gently to recover energy through regenerative braking.',
-      priority: 'high',
+      id: 2,
+      title: 'Braking Technique',
+      message: 'Gentle braking enables regenerative energy recovery. Save energy!',
       category: 'braking',
+      priority: 'high',
     });
-  }
-
-  // Rule 4: Excellent eco-score
-  if (ecoScore >= 85) {
+  } else if (ecoScore < 60) {
     tips.push({
-      id: 'eco-champion',
-      title: '🏆 Eco Champion!',
-      message: 'Fantastic riding style! You\'re saving ₹500+/year on battery replacement.',
-      priority: 'low',
-      category: 'achievement',
-    });
-  }
-
-  // Rule 5: Good eco-score with room to improve
-  if (ecoScore >= 70 && ecoScore < 85) {
-    tips.push({
-      id: 'keep-going',
-      title: '⚡ Almost Perfect!',
-      message: 'Great riding! A few small tweaks and you\'ll hit 90+. Keep it up!',
-      priority: 'low',
-      category: 'encouragement',
-    });
-  }
-
-  // Rule 6: Traffic pattern
-  if (tripData.duration > 30) {
-    tips.push({
-      id: 'traffic-tip',
-      title: '🚦 Long Ride Detected',
-      message: 'Take breaks. Consistent eco-riding on long trips makes the biggest impact.',
+      id: 3,
+      title: 'Maintain Steady Speed',
+      message: 'Constant speed (40-50 km/h) is most efficient. Avoid speed spikes.',
+      category: 'speed',
       priority: 'medium',
-      category: 'endurance',
+    });
+    tips.push({
+      id: 4,
+      title: 'Plan Route Ahead',
+      message: 'Reduce unnecessary turns & curves. Straight paths save energy.',
+      category: 'route',
+      priority: 'medium',
+    });
+  } else if (ecoScore < 80) {
+    tips.push({
+      id: 5,
+      title: 'Almost There!',
+      message: 'You\'re riding efficiently! Few small tweaks will get you to 90+.',
+      category: 'encouragement',
+      priority: 'low',
+    });
+  } else {
+    tips.push({
+      id: 6,
+      title: 'Perfect Eco-Driving!',
+      message: 'Excellent riding style! You\'re maximizing battery efficiency. Keep it up!',
+      category: 'achievement',
+      priority: 'low',
+    });
+  }
+
+  // Battery-specific tips
+  if (tripData.battery !== undefined && tripData.battery < 20) {
+    tips.push({
+      id: 7,
+      title: 'Low Battery Warning',
+      message: 'Battery below 20%. Head home or find charging station soon.',
+      category: 'battery',
+      priority: 'high',
+    });
+  }
+
+  // Speed-based tips
+  if (tripData.avgSpeed !== undefined && tripData.avgSpeed > 60) {
+    tips.push({
+      id: 8,
+      title: 'Reduce Speed',
+      message: 'Speeds over 60 km/h drain battery fast. Cruise at 40-50 km/h for 2h range.',
+      category: 'speed',
+      priority: 'high',
     });
   }
 
@@ -74,12 +76,40 @@ export const generateCoachingTips = (ecoScore, tripData = {}) => {
 
 export const getTipIcon = (category) => {
   const icons = {
-    acceleration: '🚀',
-    speed: '⚡',
+    throttle: '⚡',
     braking: '🛑',
+    speed: '⏱️',
+    route: '🗺️',
+    battery: '🔋',
+    encouragement: '🎯',
     achievement: '🏆',
-    encouragement: '💪',
-    endurance: '🛣️',
   };
   return icons[category] || '💡';
+};
+
+export const coachingTipsPrompts = {
+  aggressive: {
+    title: 'Smooth Your Ride',
+    tips: [
+      'Avoid rapid throttle bursts',
+      'Use gentle braking for regen charging',
+      'Maintain 40-50 km/h for best range',
+    ],
+  },
+  efficient: {
+    title: 'You\'re Eco-Driving!',
+    tips: [
+      'Keep steady speed',
+      'Plan efficient routes',
+      'Continue smooth acceleration',
+    ],
+  },
+  excellent: {
+    title: 'Perfect Eco-Score! 🏆',
+    tips: [
+      'Maintain this riding style',
+      'Share tips with other riders',
+      'Track your battery savings',
+    ],
+  },
 };
