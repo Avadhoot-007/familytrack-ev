@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ref, set, push } from 'firebase/database';
+import { ref, set, update } from 'firebase/database';
 import { db } from '../config/firebase';
 import './SOSModal.css';
 
@@ -7,57 +7,43 @@ export default function SOSModal({ isOpen, onClose, riderName, riderId, location
   const [isActivating, setIsActivating] = useState(false);
   const [sosActivated, setSOSActivated] = useState(false);
   const [countdownTimer, setCountdownTimer] = useState(5);
-  const [emergencyContacts, setEmergencyContacts] = useState([
+  const [emergencyContacts] = useState([
     { id: 1, name: 'Mom', phone: '+91-98765-43210', icon: '👩' },
     { id: 2, name: 'Dad', phone: '+91-87654-32109', icon: '👨' },
     { id: 3, name: 'Emergency', phone: '112', icon: '🚨' },
   ]);
 
-  // Countdown timer before SOS activation
   useEffect(() => {
     if (!isActivating || countdownTimer <= 0) return;
-
     const timer = setTimeout(() => {
       setCountdownTimer(prev => prev - 1);
     }, 1000);
-
     return () => clearTimeout(timer);
   }, [isActivating, countdownTimer]);
 
-  // Trigger SOS when countdown reaches 0
   useEffect(() => {
     if (isActivating && countdownTimer === 0) {
       handleSOSActivation();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countdownTimer, isActivating]);
 
   const handleSOSActivation = async () => {
     try {
-      const sosId = `sos-${Date.now()}`;
-      const sosRef = ref(db, `riders/${riderId}/emergencies/${sosId}`);
-
-      await set(sosRef, {
-        status: 'ACTIVE',
-        timestamp: new Date().toISOString(),
-        location: location ? {
-          latitude: location.latitude,
-          longitude: location.longitude,
-          accuracy: location.accuracy,
-        } : null,
-        battery: battery,
-        riderName: riderName,
-      });
-
-      // Notify parent/watcher
-      const alertRef = ref(db, `alerts/${sosId}`);
-      await push(alertRef, {
-        type: 'SOS_EMERGENCY',
-        riderId: riderId,
-        riderName: riderName,
-        timestamp: new Date().toISOString(),
-        location: location,
-        battery: battery,
-        status: 'PENDING',
+      // Write sosTriggered flag on the rider node — the watcher's onValue listener
+      // already watches `riders/` and will pick this up immediately.
+      await update(ref(db, `riders/${riderId}`), {
+        sosTriggered: true,
+        sosTimestamp: new Date().toISOString(),
+        sosLocation: location
+          ? {
+              lat: location.latitude,
+              lon: location.longitude,
+              accuracy: location.accuracy ?? null,
+            }
+          : null,
+        sosBattery: battery,
+        sosRiderName: riderName,
       });
 
       setSOSActivated(true);
@@ -72,11 +58,17 @@ export default function SOSModal({ isOpen, onClose, riderName, riderId, location
   const handleCancel = () => {
     setIsActivating(false);
     setCountdownTimer(5);
+  };
+
+  const handleClose = () => {
+    setIsActivating(false);
     setSOSActivated(false);
+    setCountdownTimer(5);
+    onClose();
   };
 
   const handleCallContact = (phone) => {
-    if (navigator.userAgent.includes('Android') || navigator.userAgent.includes('iPhone')) {
+    if (/Android|iPhone/i.test(navigator.userAgent)) {
       window.location.href = `tel:${phone.replace(/\D/g, '')}`;
     } else {
       alert(`Call: ${phone}`);
@@ -89,11 +81,10 @@ export default function SOSModal({ isOpen, onClose, riderName, riderId, location
     <div className="sos-modal-overlay">
       <div className="sos-modal-content">
         {!isActivating && !sosActivated ? (
-          // SOS Activation Screen
           <>
             <div className="sos-header">
               <h2>🆘 Emergency Alert</h2>
-              <button className="sos-close" onClick={onClose}>✕</button>
+              <button className="sos-close" onClick={handleClose}>✕</button>
             </div>
 
             <div className="sos-warning">
@@ -101,7 +92,6 @@ export default function SOSModal({ isOpen, onClose, riderName, riderId, location
               <p className="sos-info">Alerts parent/watcher + logs location</p>
             </div>
 
-            {/* Emergency Contacts */}
             <div className="emergency-contacts">
               <h3>Quick Call</h3>
               <div className="contacts-grid">
@@ -118,7 +108,6 @@ export default function SOSModal({ isOpen, onClose, riderName, riderId, location
               </div>
             </div>
 
-            {/* SOS Activation Button */}
             <button
               className="sos-activate-btn"
               onMouseDown={() => setIsActivating(true)}
@@ -130,12 +119,11 @@ export default function SOSModal({ isOpen, onClose, riderName, riderId, location
               🆘 Hold to Activate SOS
             </button>
 
-            <button className="sos-cancel-btn" onClick={onClose}>
+            <button className="sos-cancel-btn" onClick={handleClose}>
               Cancel
             </button>
           </>
         ) : isActivating && !sosActivated ? (
-          // Countdown Screen
           <>
             <div className="sos-countdown-container">
               <div className="countdown-circle">
@@ -145,7 +133,6 @@ export default function SOSModal({ isOpen, onClose, riderName, riderId, location
             </div>
           </>
         ) : (
-          // SOS Activated Confirmation
           <>
             <div className="sos-activated">
               <div className="success-icon">✓</div>
@@ -167,10 +154,7 @@ export default function SOSModal({ isOpen, onClose, riderName, riderId, location
                 <p>📍 Your location is being tracked in real-time.</p>
               </div>
 
-              <button className="sos-close-btn" onClick={() => {
-                handleCancel();
-                onClose();
-              }}>
+              <button className="sos-close-btn" onClick={handleClose}>
                 Close
               </button>
             </div>

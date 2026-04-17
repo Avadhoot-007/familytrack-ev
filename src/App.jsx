@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import RiderDashboard from './pages/RiderDashboard';
-import WatcherDashboard from './pages/WatcherDashboard';
+import WatcherDashboard from './pages/WatcherDashboardPage';
 
 export default function App() {
   const [view, setView] = useState('rider');

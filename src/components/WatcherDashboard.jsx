@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, update } from 'firebase/database';
 import { db } from '../config/firebase';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { isInsideGeofence } from '../services/locationService';
 import { geofences } from '../data/geofences';
-import TripSummaryCard from '../components/TripSummaryCard.jsx';
-import CoachingTipCard from '../components/CoachingTipCard.jsx';
+import TripSummaryCard from './TripSummaryCard.jsx';
+import CoachingTipCard from './CoachingTipCard.jsx';
+import { downloadTripPDF } from '../utils/tripPDFExport';
 
 const RIDER_COLORS = ['#e53935', '#1e88e5', '#8e24aa', '#f4511e', '#00897b'];
 
@@ -45,6 +46,103 @@ function RecenterMap({ lat, lon }) {
   }, [lat, lon, map]);
   return null;
 }
+
+// ── Watcher-side SOS alert modal ──────────────────────────────────────────────
+function SOSAlertModal({ sosRider, onResolve, onClose }) {
+  if (!sosRider) return null;
+
+  const loc = sosRider.sosLocation;
+  const mapsUrl =
+    loc && validCoords(loc.lat, loc.lon)
+      ? `https://www.google.com/maps?q=${loc.lat},${loc.lon}`
+      : null;
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.7)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 9999,
+    }}>
+      <div style={{
+        background: 'white', borderRadius: '12px',
+        padding: '32px', maxWidth: '440px', width: '90%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        textAlign: 'center',
+      }}>
+        <div style={{ fontSize: '56px', marginBottom: '8px' }}>🚨</div>
+        <h2 style={{ color: '#dc3545', margin: '0 0 8px' }}>SOS EMERGENCY</h2>
+        <p style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>
+          {sosRider.sosRiderName || sosRider.riderId} needs help!
+        </p>
+
+        <div style={{
+          background: '#fff3cd', border: '1px solid #ffc107',
+          borderRadius: '8px', padding: '12px', marginBottom: '16px',
+          textAlign: 'left', fontSize: '14px',
+        }}>
+          {sosRider.sosTimestamp && (
+            <p style={{ margin: '4px 0' }}>
+              🕐 <strong>Time:</strong>{' '}
+              {new Date(sosRider.sosTimestamp).toLocaleTimeString()}
+            </p>
+          )}
+          {loc && validCoords(loc.lat, loc.lon) ? (
+            <p style={{ margin: '4px 0' }}>
+              📍 <strong>Location:</strong> {Number(loc.lat).toFixed(4)}, {Number(loc.lon).toFixed(4)}
+            </p>
+          ) : (
+            <p style={{ margin: '4px 0' }}>📍 <strong>Location:</strong> Not available</p>
+          )}
+          {sosRider.sosBattery != null && (
+            <p style={{ margin: '4px 0' }}>
+              🔋 <strong>Battery:</strong> {sosRider.sosBattery}%
+            </p>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
+          {mapsUrl && (
+            <a
+              href={mapsUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: 'block', padding: '10px',
+                background: '#1976d2', color: 'white',
+                borderRadius: '6px', textDecoration: 'none',
+                fontWeight: 'bold', fontSize: '14px',
+              }}
+            >
+              📍 Open in Google Maps
+            </a>
+          )}
+          <button
+            onClick={onResolve}
+            style={{
+              padding: '10px', background: '#28a745', color: 'white',
+              border: 'none', borderRadius: '6px', cursor: 'pointer',
+              fontWeight: 'bold', fontSize: '14px',
+            }}
+          >
+            ✓ Mark as Resolved
+          </button>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '10px', background: '#6c757d', color: 'white',
+              border: 'none', borderRadius: '6px', cursor: 'pointer',
+              fontSize: '14px',
+            }}
+          >
+            Dismiss (keep monitoring)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 function TripStatsSummary({ trips, filterDays }) {
   const now = Date.now();
@@ -85,7 +183,7 @@ function TripStatsSummary({ trips, filterDays }) {
   );
 }
 
-function TripHistoryTable({ trips, filterDays, onTripClick }) {
+function TripHistoryTable({ trips, filterDays, onTripClick, onExportPDF }) {
   const now = Date.now();
   const windowMs = filterDays * 24 * 60 * 60 * 1000;
   const filtered = trips
@@ -106,14 +204,14 @@ function TripHistoryTable({ trips, filterDays, onTripClick }) {
             <th style={{ padding: '8px', textAlign: 'center' }}>Score</th>
             <th style={{ padding: '8px', textAlign: 'center' }}>Distance (km)</th>
             <th style={{ padding: '8px', textAlign: 'center' }}>Avg Speed (km/h)</th>
+            <th style={{ padding: '8px', textAlign: 'center' }}>Actions</th>
           </tr>
         </thead>
         <tbody>
           {filtered.map((trip) => (
             <tr
               key={trip.id}
-              onClick={() => onTripClick(trip)}
-              style={{ borderBottom: '1px solid #eee', cursor: 'pointer' }}
+              style={{ borderBottom: '1px solid #eee' }}
               onMouseEnter={(e) => e.currentTarget.style.background = '#f9f9f9'}
               onMouseLeave={(e) => e.currentTarget.style.background = ''}
             >
@@ -131,6 +229,27 @@ function TripHistoryTable({ trips, filterDays, onTripClick }) {
               </td>
               <td style={{ padding: '8px', textAlign: 'center' }}>{trip.distanceKm ?? '—'}</td>
               <td style={{ padding: '8px', textAlign: 'center' }}>{trip.avgSpeedKmh ?? '—'}</td>
+              <td style={{ padding: '8px', textAlign: 'center' }}>
+                <button
+                  onClick={() => onTripClick(trip)}
+                  style={{
+                    padding: '4px 8px', background: '#007bff', color: 'white',
+                    border: 'none', borderRadius: '4px', cursor: 'pointer',
+                    marginRight: '4px', fontSize: '12px',
+                  }}
+                >
+                  View
+                </button>
+                <button
+                  onClick={() => onExportPDF(trip)}
+                  style={{
+                    padding: '4px 8px', background: '#28a745', color: 'white',
+                    border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px',
+                  }}
+                >
+                  PDF
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -146,16 +265,20 @@ export default function WatcherDashboard() {
   const [filterDays, setFilterDays] = useState(7);
   const [firstOnlineRider, setFirstOnlineRider] = useState(null);
   const [selectedTrip, setSelectedTrip] = useState(null);
+  const [sosRider, setSosRider] = useState(null);
   const riderIndexMap = useRef({});
   const riderColorMap = useRef({});
   const previousInsideRef = useRef({});
+  const sosProcessedRef = useRef({});
 
   useEffect(() => {
     const ridersRef = ref(db, 'riders');
+
     const unsubscribe = onValue(ridersRef, (snapshot) => {
       const data = snapshot.val();
       if (!data) return;
 
+      // Assign colours to new riders
       Object.keys(data).forEach((riderId) => {
         if (riderIndexMap.current[riderId] === undefined) {
           const idx = Object.keys(riderIndexMap.current).length;
@@ -166,17 +289,39 @@ export default function WatcherDashboard() {
 
       setRiders(data);
 
+      // ── SOS detection ──────────────────────────────────────────────────────
+      Object.entries(data).forEach(([riderId, riderData]) => {
+        // sosTriggered must be explicitly true and not yet resolved
+        if (riderData.sosTriggered === true && !riderData.sosResolved) {
+          if (!sosProcessedRef.current[riderId]) {
+            sosProcessedRef.current[riderId] = true;
+            setSosRider({ riderId, ...riderData });
+            setAlerts((prev) => [
+              {
+                id: `${riderId}-sos-${Date.now()}`,
+                message: `🚨 SOS ALERT from ${riderData.sosRiderName || riderData.location?.name || riderId}!`,
+                type: 'danger',
+              },
+              ...prev.slice(0, 49),
+            ]);
+          }
+        } else {
+          // SOS was resolved — allow it to fire again next time
+          if (sosProcessedRef.current[riderId]) {
+            sosProcessedRef.current[riderId] = false;
+          }
+        }
+      });
+      // ──────────────────────────────────────────────────────────────────────
+
+      // ── Geofence alerts ───────────────────────────────────────────────────
       Object.entries(data).forEach(([riderId, riderData]) => {
         if (!riderData.location) return;
-
         const lat = riderData.location.lat;
         const lon = riderData.location.lon ?? riderData.location.lng;
         const riderName = riderData.location.name || riderId;
 
-        if (!validCoords(lat, lon)) {
-          console.warn(`Rider ${riderId} has invalid coordinates:`, { lat, lon });
-          return;
-        }
+        if (!validCoords(lat, lon)) return;
 
         if (!previousInsideRef.current[riderId]) {
           previousInsideRef.current[riderId] = {};
@@ -201,39 +346,39 @@ export default function WatcherDashboard() {
           }
         });
       });
+      // ──────────────────────────────────────────────────────────────────────
 
-      const trips = [];
-      Object.entries(data).forEach(([riderId, riderData]) => {
-        if (!riderData.trips) return;
-        Object.entries(riderData.trips).forEach(([tripId, trip]) => {
-          trips.push({
-            id: tripId,
-            riderId,
-            riderName: riderData.location?.name || riderId,
-            riderColor: riderColorMap.current[riderId],
-            ...trip,
-          });
-        });
+      // ── Trips ─────────────────────────────────────────────────────────────
+      const trips = Object.entries(data).flatMap(([riderId, riderData]) => {
+        if (!riderData.trips) return [];
+        const riderName = riderData.location?.name || riderId;
+        return Object.entries(riderData.trips).map(([tripId, trip]) => ({
+          id: tripId,
+          riderId,
+          riderName,
+          riderColor: riderColorMap.current[riderId],
+          ...trip,
+        }));
       });
       setAllTrips(trips);
 
-      const online = Object.entries(data).find(([, r]) => {
+      // Centre map on first online rider
+      const onlineEntry = Object.entries(data).find(([, r]) => {
         if (r.status !== 'online' || !r.location) return false;
-        const lat = r.location.lat;
         const lon = r.location.lon ?? r.location.lng;
-        return validCoords(lat, lon);
+        return validCoords(r.location.lat, lon);
       });
-      if (online) {
-        const loc = online[1].location;
+      if (onlineEntry) {
+        const loc = onlineEntry[1].location;
         setFirstOnlineRider({ ...loc, lon: loc.lon ?? loc.lng });
       }
+      // ──────────────────────────────────────────────────────────────────────
     });
 
     return () => unsubscribe();
   }, []);
 
   const defaultCenter = [18.5204, 73.8567];
-
   const mapCenter =
     firstOnlineRider && validCoords(firstOnlineRider.lat, firstOnlineRider.lon)
       ? [firstOnlineRider.lat, firstOnlineRider.lon]
@@ -251,29 +396,74 @@ export default function WatcherDashboard() {
     return validCoords(r.location.lat, lon);
   });
 
+  const handleExportPDF = (trip) => {
+    try {
+      downloadTripPDF({
+        riderName: trip.riderName || trip.riderId,
+        distance: trip.distanceKm || 0,
+        duration: trip.durationSeconds || 0,
+        ecoScore: trip.score || 0,
+        avgSpeed: trip.avgSpeedKmh || 0,
+        timestamp: trip.timestamp,
+        battery: 85,
+        batteryUsed: 15,
+      });
+    } catch (error) {
+      console.error('PDF export failed:', error);
+      alert('Failed to export PDF');
+    }
+  };
+
+  const handleSOSResolve = async () => {
+    if (!sosRider?.riderId) return;
+    try {
+      await update(ref(db, `riders/${sosRider.riderId}`), {
+        sosTriggered: false,
+        sosResolved: true,
+        sosResolvedTime: new Date().toISOString(),
+      });
+      sosProcessedRef.current[sosRider.riderId] = false;
+      setSosRider(null);
+    } catch (error) {
+      console.error('Failed to resolve SOS:', error);
+      alert('Failed to mark SOS as resolved');
+    }
+  };
+
+  const handleSOSDismiss = () => {
+    setSosRider(null);
+    // Do NOT reset sosProcessedRef — we don't want repeated popups for the
+    // same active SOS until the rider clears it or it's resolved.
+  };
+
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial' }}>
       <h1>Watcher Dashboard</h1>
 
+      {/* Rider status pills */}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
         {Object.entries(riders).map(([riderId, riderData]) => {
           const isOnline = riderData.status === 'online';
           const color = riderColorMap.current[riderId] || '#999';
           const name = riderData.location?.name || riderId;
+          const hasSOS = riderData.sosTriggered && !riderData.sosResolved;
           return (
             <span key={riderId} style={{
               padding: '4px 12px', borderRadius: '20px', fontSize: '13px',
-              background: isOnline ? color : '#eee',
-              color: isOnline ? 'white' : '#999',
-              border: `1px solid ${isOnline ? color : '#ddd'}`,
+              background: hasSOS ? '#dc3545' : isOnline ? color : '#eee',
+              color: (isOnline || hasSOS) ? 'white' : '#999',
+              border: `1px solid ${hasSOS ? '#dc3545' : isOnline ? color : '#ddd'}`,
+              fontWeight: hasSOS ? 'bold' : 'normal',
+              animation: hasSOS ? 'pulse 1s infinite' : 'none',
             }}>
-              {isOnline ? '🟢' : '⚫'} {name}
+              {hasSOS ? '🚨' : isOnline ? '🟢' : '⚫'} {name}
             </span>
           );
         })}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '30px' }}>
+        {/* Map */}
         <div style={{ height: '400px' }}>
           <MapContainer center={mapCenter} zoom={13} style={{ width: '100%', height: '400px' }}>
             <TileLayer
@@ -284,7 +474,8 @@ export default function WatcherDashboard() {
               <RecenterMap lat={firstOnlineRider.lat} lon={firstOnlineRider.lon} />
             )}
             {onlineRiders.map(([riderId, riderData]) => {
-              const color = riderColorMap.current[riderId] || '#e53935';
+              const hasSOS = riderData.sosTriggered && !riderData.sosResolved;
+              const color = hasSOS ? '#dc3545' : (riderColorMap.current[riderId] || '#e53935');
               const name = riderData.location.name || riderId;
               const lon = riderData.location.lon ?? riderData.location.lng;
               return (
@@ -297,6 +488,7 @@ export default function WatcherDashboard() {
                     <strong>{name}</strong><br />
                     🔋 {riderData.location.battery}%<br />
                     🟢 Online
+                    {hasSOS && <><br /><span style={{ color: 'red', fontWeight: 'bold' }}>🚨 SOS ACTIVE</span></>}
                   </Popup>
                 </Marker>
               );
@@ -334,29 +526,40 @@ export default function WatcherDashboard() {
           </MapContainer>
         </div>
 
+        {/* Alerts panel */}
         <div>
           <h3>Recent Alerts</h3>
           <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
             {alerts.length === 0 && (
               <p style={{ color: '#999', fontSize: '14px' }}>No alerts yet.</p>
             )}
-            {alerts.map((alert) => (
-              <div
-                key={alert.id}
-                style={{
-                  padding: '10px', margin: '5px 0',
-                  background: alert.type === 'success' ? '#d4edda' : '#fff3cd',
-                  border: `1px solid ${alert.type === 'success' ? '#28a745' : '#ffc107'}`,
-                  borderRadius: '4px', fontSize: '14px',
-                }}
-              >
-                {alert.message}
-              </div>
-            ))}
+            {alerts.map((alert) => {
+              const bgColor =
+                alert.type === 'danger' ? '#f8d7da' :
+                alert.type === 'success' ? '#d4edda' : '#fff3cd';
+              const borderColor =
+                alert.type === 'danger' ? '#f5c6cb' :
+                alert.type === 'success' ? '#28a745' : '#ffc107';
+              return (
+                <div
+                  key={alert.id}
+                  style={{
+                    padding: '10px', margin: '5px 0',
+                    background: bgColor,
+                    border: `1px solid ${borderColor}`,
+                    borderRadius: '4px', fontSize: '14px',
+                    fontWeight: alert.type === 'danger' ? 'bold' : 'normal',
+                  }}
+                >
+                  {alert.message}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
 
+      {/* Trip history */}
       <div>
         <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', alignItems: 'center' }}>
           <h3 style={{ margin: 0 }}>📊 Trip History</h3>
@@ -373,9 +576,15 @@ export default function WatcherDashboard() {
           </select>
         </div>
         <TripStatsSummary trips={allTrips} filterDays={filterDays} />
-        <TripHistoryTable trips={allTrips} filterDays={filterDays} onTripClick={setSelectedTrip} />
+        <TripHistoryTable
+          trips={allTrips}
+          filterDays={filterDays}
+          onTripClick={setSelectedTrip}
+          onExportPDF={handleExportPDF}
+        />
       </div>
 
+      {/* Trip detail modal */}
       {selectedTrip && (
         <div
           style={{
@@ -419,6 +628,15 @@ export default function WatcherDashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* SOS alert modal — shown when a rider triggers SOS */}
+      {sosRider && (
+        <SOSAlertModal
+          sosRider={sosRider}
+          onResolve={handleSOSResolve}
+          onClose={handleSOSDismiss}
+        />
       )}
     </div>
   );
