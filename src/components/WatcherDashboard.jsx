@@ -59,17 +59,11 @@ function MapController({ onMapReady }) {
   return null;
 }
 
-// ── Watcher-side SOS alert modal ──────────────────────────────────────────────
-// FIX: sosLocation can be written by the rider as either:
-//   { lat, lon }        — legacy / direct writes
-//   { latitude, longitude } — from the Geolocation API via SOSModal.jsx
-// We normalise both so the Google Maps button always appears when coords exist.
 function SOSAlertModal({ sosRider, onResolve, onClose }) {
   if (!sosRider) return null;
 
   const raw = sosRider.sosLocation;
 
-  // Normalise: accept lat/lon OR latitude/longitude
   const loc = raw
     ? {
         lat: raw.lat ?? raw.latitude ?? null,
@@ -133,7 +127,6 @@ function SOSAlertModal({ sosRider, onResolve, onClose }) {
     </div>
   );
 }
-// ─────────────────────────────────────────────────────────────────────────────
 
 function TripStatsSummary({ trips, filterDays }) {
   const now = Date.now();
@@ -286,7 +279,6 @@ export default function WatcherDashboard() {
 
       setRiders(data);
 
-      // ── SOS detection ──────────────────────────────────────────────────────
       Object.entries(data).forEach(([riderId, riderData]) => {
         if (riderData.sosTriggered === true && !sosProcessedRef.current[riderId]) {
           sosProcessedRef.current[riderId] = true;
@@ -304,7 +296,6 @@ export default function WatcherDashboard() {
         }
       });
 
-      // ── Geofence alerts ───────────────────────────────────────────────────
       Object.entries(data).forEach(([riderId, riderData]) => {
         if (!riderData.location) return;
         const lat = riderData.location.lat;
@@ -337,7 +328,6 @@ export default function WatcherDashboard() {
         });
       });
 
-      // ── Trips ─────────────────────────────────────────────────────────────
       const trips = Object.entries(data).flatMap(([riderId, riderData]) => {
         if (!riderData.trips) return [];
         const riderName = riderData.location?.name || riderId;
@@ -394,6 +384,7 @@ export default function WatcherDashboard() {
         timestamp: trip.timestamp,
         battery: 85,
         batteryUsed: 15,
+        worstAxis: trip.worstAxis || 'speed',
       });
     } catch (error) {
       console.error('PDF export failed:', error);
@@ -428,7 +419,6 @@ export default function WatcherDashboard() {
     <div style={{ padding: '20px', fontFamily: 'Arial' }}>
       <h1>Watcher Dashboard</h1>
 
-      {/* Rider status pills */}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
         {Object.entries(riders).map(([riderId, riderData]) => {
           const isOnline = riderData.status === 'online';
@@ -451,7 +441,6 @@ export default function WatcherDashboard() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '30px' }}>
-        {/* Map */}
         <div className="map-wrapper">
           <button
             onClick={handleRecenterMap}
@@ -524,7 +513,6 @@ export default function WatcherDashboard() {
           </MapContainer>
         </div>
 
-        {/* Alerts panel */}
         <div>
           <h3>Recent Alerts</h3>
           <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
@@ -557,7 +545,6 @@ export default function WatcherDashboard() {
         </div>
       </div>
 
-      {/* Trip history */}
       <div>
         <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', alignItems: 'center' }}>
           <h3 style={{ margin: 0 }}>📊 Trip History</h3>
@@ -582,7 +569,6 @@ export default function WatcherDashboard() {
         />
       </div>
 
-      {/* Trip detail modal */}
       {selectedTrip && (() => {
         const tripForCard = {
           distance: selectedTrip.distanceKm || 0,

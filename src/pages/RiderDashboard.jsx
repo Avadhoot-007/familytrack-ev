@@ -1,9 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { ref, set } from 'firebase/database';
 import { db } from '../config/firebase';
-import { generateSensorReading, calculateEcoScore, calculateTripEcoScore, getEcoScoreColor } from '../utils/ecoScoring';
+import { generateSensorReading, calculateEcoScore, calculateTripStats, getEcoScoreColor } from '../utils/ecoScoring';
+import { useStore } from '../store';
 import RiderLeaderboard from "../components/RiderLeaderboard";
 import SOSModal from "../components/SOSModal";
+import EnvironmentalImpactHub from '../components/EnvironmentalImpactHub';
+import CoachingTipsSystem from '../components/CoachingTipsSystem';
+import TripSummaryCard from '../components/TripSummaryCard';
+import { getCoachingTips } from '../utils/ecoImpactCalculations';
 import './RiderDashboard.css';
 
 export default function RiderDashboard({ riderName }) {
@@ -20,15 +25,21 @@ export default function RiderDashboard({ riderName }) {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sosModalOpen, setSOSModalOpen] = useState(false);
+  const [tripData, setTripData] = useState(null);
+  const [showTripSummary, setShowTripSummary] = useState(false);
 
   const batteryRef = useRef(battery);
   const watchIdRef = useRef(null);
+
+  // Store integration
+  const { tripHistory, addCompletedTrip, setCoachingTips, currentCoachingTips } = useStore();
 
   useEffect(() => { batteryRef.current = battery; }, [battery]);
 
   const riderId = riderName?.toLowerCase().replace(/\s+/g, '-') || 'rider-1';
   const avgSpeed = readingCount > 0 ? speedSum / readingCount : 0;
 
+  // Timer for trip duration
   useEffect(() => {
     if (!tripStarted) return;
     const interval = setInterval(() => {
@@ -37,6 +48,7 @@ export default function RiderDashboard({ riderName }) {
     return () => clearInterval(interval);
   }, [tripStarted]);
 
+  // Sensor readings interval
   useEffect(() => {
     if (!isSharing) return;
 
@@ -54,6 +66,7 @@ export default function RiderDashboard({ riderName }) {
     return () => clearInterval(interval);
   }, [isSharing]);
 
+  // Geolocation watcher
   useEffect(() => {
     if (!isSharing) return;
 
@@ -94,10 +107,6 @@ export default function RiderDashboard({ riderName }) {
 
     watchIdRef.current = id;
 
-    // FIX: This cleanup only runs when isSharing becomes false (user stops
-    // the trip) — NOT on component unmount, because RiderDashboard is now
-    // always mounted. This means switching to Watcher view no longer
-    // triggers this cleanup and the GPS watcher stays alive.
     return () => {
       navigator.geolocation.clearWatch(id);
       watchIdRef.current = null;
@@ -121,18 +130,15 @@ export default function RiderDashboard({ riderName }) {
     setIsSharing(false);
     setTripStarted(false);
 
-    // FIX: Removed redundant manual clearWatch from here.
-    // Setting isSharing to false triggers the useEffect cleanup above,
-    // which already calls clearWatch. Calling it twice was harmless but
-    // unnecessary. The useEffect cleanup is now the single source of truth
-    // for stopping the GPS watcher.
-
     try {
       const tripId = `trip-${Date.now()}`;
       const tripRef = ref(db, `riders/${riderId}/trips/${tripId}`);
-      const tripEcoScore = calculateTripEcoScore(readings);
+      const tripStats = calculateTripStats(readings);
+      const tripEcoScore = tripStats.avg;
+      const worstAxis = tripStats.worstAxis;
 
-      await set(tripRef, {
+      // Prepare trip data for Firebase and impact hub
+      const tripDataObj = {
         timestamp: new Date().toISOString(),
         distanceKm: parseFloat(tripDistance.toFixed(2)),
         avgSpeedKmh: parseFloat(avgSpeed.toFixed(1)),
@@ -141,7 +147,48 @@ export default function RiderDashboard({ riderName }) {
         durationSeconds: tripDuration,
         startLat: location?.latitude ?? null,
         startLon: location?.longitude ?? null,
+        worstAxis: worstAxis,
+      };
+
+      // Save to Firebase
+      await set(tripRef, tripDataObj);
+
+      // Add to store history (for impact hub)
+      addCompletedTrip({
+        riderName,
+        distance: tripDataObj.distanceKm,
+        duration: tripDataObj.durationSeconds,
+        ecoScore: tripDataObj.score,
+        avgSpeed: tripDataObj.avgSpeedKmh,
+        battery: batteryRef.current,
+        batteryUsed: 100 - batteryRef.current,
+        worstAxis: worstAxis,
+        timestamp: tripDataObj.timestamp,
       });
+
+      // Generate coaching tips
+      const tips = getCoachingTips(
+        tripEcoScore,
+        worstAxis,
+        avgSpeed,
+        readings.map(r => r.throttle),
+        tripDistance
+      );
+      setCoachingTips(tips);
+
+      // Store trip data for manual export
+      setTripData({
+        riderName,
+        distance: tripDataObj.distanceKm,
+        duration: tripDataObj.durationSeconds,
+        ecoScore: tripEcoScore,
+        avgSpeed: tripDataObj.avgSpeedKmh,
+        battery: batteryRef.current,
+        batteryUsed: 100 - batteryRef.current,
+        worstAxis: worstAxis,
+        timestamp: tripDataObj.timestamp,
+      });
+      setShowTripSummary(true);
 
       const statusRef = ref(db, `riders/${riderId}/status`);
       await set(statusRef, 'offline');
@@ -217,6 +264,12 @@ export default function RiderDashboard({ riderName }) {
           onClick={() => setActiveTab('leaderboard')}
         >
           🏆 Leaderboard
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'impact' ? 'active' : ''}`}
+          onClick={() => setActiveTab('impact')}
+        >
+          🌱 Impact Hub
         </button>
       </div>
 
@@ -332,9 +385,36 @@ export default function RiderDashboard({ riderName }) {
               ✓ Trip ended! Distance: {tripDistance.toFixed(2)} km | Duration: {formatDuration(tripDuration)} | Final Eco-Score: {Math.round(ecoScore)}/100
             </div>
           )}
+
+          {showTripSummary && tripData && (
+            <TripSummaryModal
+              tripData={tripData}
+              riderId={riderId}
+              onClose={() => setShowTripSummary(false)}
+            />
+          )}
         </>
-      ) : (
+      ) : activeTab === 'leaderboard' ? (
         <RiderLeaderboard />
+      ) : (
+        <EnvironmentalImpactHub 
+          tripHistory={tripHistory} 
+          currentTrip={{
+            distance: tripDistance,
+            duration: tripDuration,
+            ecoScore: Math.round(ecoScore),
+            avgSpeed: avgSpeed,
+            batteryUsed: 100 - battery,
+          }}
+        />
+      )}
+
+      {/* Coaching Tips Toast (always visible during trip) */}
+      {isSharing && currentCoachingTips.length > 0 && (
+        <CoachingTipsSystem 
+          tips={currentCoachingTips}
+          ecoScore={Math.round(ecoScore)}
+        />
       )}
 
       <SOSModal 
@@ -345,6 +425,66 @@ export default function RiderDashboard({ riderName }) {
         location={location}
         battery={battery}
       />
+    </div>
+  );
+}
+
+function TripSummaryModal({ tripData, riderId, onClose }) {
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'rgba(0,0,0,0.7)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000,
+      padding: '20px',
+    }}>
+      <div style={{
+        background: '#1a1a1a',
+        borderRadius: '12px',
+        maxWidth: '600px',
+        width: '100%',
+        maxHeight: '80vh',
+        overflowY: 'auto',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+      }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '20px',
+          borderBottom: '1px solid #333',
+          position: 'sticky',
+          top: 0,
+          background: '#1a1a1a',
+        }}>
+          <h2 style={{ margin: 0, color: '#fff', fontSize: '20px' }}>✓ Trip Complete!</h2>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '24px',
+              cursor: 'pointer',
+              color: '#999',
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{ padding: '20px' }}>
+          <TripSummaryCard 
+            trip={tripData} 
+            riderId={riderId}
+          />
+        </div>
+      </div>
     </div>
   );
 }
