@@ -1,11 +1,22 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import RiderDashboard from './pages/RiderDashboard';
 import WatcherDashboard from './pages/WatcherDashboardPage';
+import { hydrateTripsFromStorage } from './store';
 
 export default function App() {
   const [view, setView] = useState('rider');
   const [riderName, setRiderName] = useState('');
   const [nameSet, setNameSet] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // Hydrate trips once on app mount
+  useEffect(() => {
+    const init = async () => {
+      await hydrateTripsFromStorage();
+      setIsHydrated(true);
+    };
+    init();
+  }, []);
 
   const handleSetName = () => {
     if (riderName.trim()) {
@@ -70,6 +81,27 @@ export default function App() {
     );
   }
 
+  // Show full loading screen while hydrating
+  if (!isHydrated) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        background: '#f5f5f5',
+        fontFamily: 'Arial',
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '48px', marginBottom: '20px' }}>🚴</div>
+          <h1>FamilyTrack EV</h1>
+          <p style={{ color: '#666' }}>Loading trip history...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ fontFamily: 'Arial' }}>
       <div style={{
@@ -116,6 +148,10 @@ export default function App() {
 
         WatcherDashboard still remounts fresh each time (key="watcher-map")
         to guarantee a clean Leaflet map init with a visible container.
+
+        CRITICAL: App only renders content AFTER isHydrated=true.
+        This ensures tripHistory is loaded into store before RiderDashboard init.
+        Fixes: data not showing in Impact Hub on page reload.
       */}
       <div style={{ display: view === 'rider' ? 'block' : 'none' }}>
         <RiderDashboard riderName={riderName} />

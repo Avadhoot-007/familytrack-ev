@@ -1,10 +1,49 @@
+/* ============================================
+   DYNAMIC THEME VARIABLES (Battery-based)
+   ============================================ */
 .rider-dashboard {
+  --accent-color: #4CAF50;
+  --accent-light: #81c784;
+  --accent-dark: #2e7d32;
+  --status-color: #4CAF50;
+  --border-color: rgba(76, 175, 80, 0.3);
+  --bg-accent: rgba(76, 175, 80, 0.08);
   padding: 20px;
   max-width: 900px;
   margin: 0 auto;
   background: #121212;
   color: #fff;
   border-radius: 8px;
+}
+
+/* High Battery (50%+): Calm green */
+.rider-dashboard.battery-healthy {
+  --accent-color: #4CAF50;
+  --accent-light: #81c784;
+  --accent-dark: #2e7d32;
+  --status-color: #4CAF50;
+  --border-color: rgba(76, 175, 80, 0.3);
+  --bg-accent: rgba(76, 175, 80, 0.08);
+}
+
+/* Medium Battery (20-50%): Warning yellow */
+.rider-dashboard.battery-warning {
+  --accent-color: #FFC107;
+  --accent-light: #FFD54F;
+  --accent-dark: #FFA000;
+  --status-color: #FFD700;
+  --border-color: rgba(255, 193, 7, 0.3);
+  --bg-accent: rgba(255, 193, 7, 0.08);
+}
+
+/* Low Battery (<20%): Critical red */
+.rider-dashboard.battery-critical {
+  --accent-color: #f44336;
+  --accent-light: #ef5350;
+  --accent-dark: #c62828;
+  --status-color: #ff5252;
+  --border-color: rgba(244, 67, 54, 0.3);
+  --bg-accent: rgba(244, 67, 54, 0.08);
 }
 
 .dashboard-tabs {
@@ -27,8 +66,8 @@
 }
 
 .tab-btn.active {
-  color: #4CAF50;
-  border-bottom-color: #4CAF50;
+  color: var(--accent-color);
+  border-bottom-color: var(--accent-color);
 }
 
 .tab-btn:hover {
@@ -50,53 +89,160 @@ h3 {
 .rider-name-badge {
   display: inline-block;
   padding: 8px 16px;
-  background: #1e7e34;
-  color: #fff;
+  background: rgba(76, 175, 80, 0.2);
+  color: var(--accent-color);
+  border: 1px solid var(--accent-color);
   border-radius: 20px;
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 16px;
+  transition: all 0.3s ease;
 }
 
-/* Battery Section */
+/* ============================================
+   BATTERY SECTION - Redesigned with circular gauge
+   ============================================ */
 .battery-section {
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  padding: 16px;
+  background: linear-gradient(135deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.2) 100%);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
   margin-bottom: 16px;
+  transition: all 0.3s ease;
 }
 
 .battery-section p {
-  margin: 0 0 12px;
+  margin: 0 0 16px;
   font-size: 16px;
   color: #e0e0e0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
+/* Circular Battery Gauge */
+.battery-gauge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  gap: 20px;
+}
+
+.battery-circle {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  flex-shrink: 0;
+}
+
+.battery-circle svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.battery-circle-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.1);
+  stroke-width: 8;
+}
+
+.battery-circle-fill {
+  fill: none;
+  stroke: var(--accent-color);
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke 0.3s ease, stroke-dashoffset 0.5s ease;
+}
+
+.battery-circle-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  width: 100%;
+}
+
+.battery-percent {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--accent-color);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.battery-label {
+  font-size: 11px;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Battery Info Panel */
+.battery-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.battery-stat {
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  font-size: 13px;
+  color: #b0bec5;
+}
+
+.battery-stat strong {
+  color: var(--accent-color);
+}
+
+.battery-stat.warning {
+  background: rgba(255, 193, 7, 0.1);
+  border-left: 3px solid var(--accent-color);
+}
+
+/* Linear Progress Bar (Secondary) */
 .battery-bar {
   width: 100%;
-  height: 12px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
   overflow: hidden;
   margin-bottom: 8px;
 }
 
 .battery-fill {
   height: 100%;
-  border-radius: 6px;
-  transition: width 0.3s ease, background-color 0.3s ease;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent-color) 0%, var(--accent-light) 100%);
+  transition: width 0.4s ease, background 0.3s ease;
+  box-shadow: 0 0 12px rgba(76, 175, 80, 0.4);
 }
 
 .battery-slider {
   width: 100%;
   cursor: pointer;
+  accent-color: var(--accent-color);
+}
+
+/* Pulse effect for critical battery */
+@keyframes pulse-critical {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.rider-dashboard.battery-critical .battery-fill {
+  animation: pulse-critical 1s infinite;
 }
 
 /* Trip Timer */
 .trip-timer {
-  background: rgba(76, 175, 80, 0.15);
-  border: 1px solid #4CAF50;
+  background: var(--bg-accent);
+  border: 1px solid var(--accent-color);
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 16px;
@@ -106,7 +252,7 @@ h3 {
 .timer-label {
   margin: 0;
   font-size: 14px;
-  color: #a8d5a8;
+  color: var(--accent-light);
   text-transform: uppercase;
   letter-spacing: 1px;
 }
@@ -115,7 +261,7 @@ h3 {
   margin: 8px 0 0;
   font-size: 32px;
   font-weight: bold;
-  color: #4CAF50;
+  color: var(--accent-color);
   font-family: 'Courier New', monospace;
 }
 
@@ -235,7 +381,7 @@ h3 {
 /* Live Stats */
 .live-stats {
   background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 16px;
   margin-bottom: 16px;
@@ -243,6 +389,7 @@ h3 {
 
 .live-stats h3 {
   margin-top: 0;
+  color: var(--accent-color);
 }
 
 .live-stats p {
@@ -252,7 +399,7 @@ h3 {
 }
 
 .live-stats strong {
-  color: #4CAF50;
+  color: var(--accent-color);
   font-size: 15px;
 }
 
@@ -272,15 +419,16 @@ h3 {
 /* Status Box */
 .status-box {
   background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 16px;
   text-align: center;
   margin-bottom: 16px;
+  transition: all 0.3s ease;
 }
 
 .status-active {
-  color: #4CAF50;
+  color: var(--accent-color);
   font-weight: 600;
   margin: 0;
   font-size: 15px;
@@ -300,12 +448,12 @@ h3 {
 
 /* Trip Ended */
 .trip-ended {
-  background: rgba(76, 175, 80, 0.15);
-  border: 1px solid #4CAF50;
+  background: var(--bg-accent);
+  border: 1px solid var(--accent-color);
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 16px;
-  color: #a8d5a8;
+  color: var(--accent-light);
   font-size: 14px;
   line-height: 1.5;
 }

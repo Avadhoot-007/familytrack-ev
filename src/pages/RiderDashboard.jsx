@@ -47,13 +47,31 @@ export default function RiderDashboard({ riderName }) {
   const tripStartTimeRef = useRef(null);
   const simulationIntervalRef = useRef(null);
 
-  // Store integration
-  const { tripHistory, addCompletedTrip, setCoachingTips, currentCoachingTips } = useStore();
+  // Store integration - subscribe to all changes
+  const tripHistory = useStore((state) => state.tripHistory);
+  const addCompletedTrip = useStore((state) => state.addCompletedTrip);
+  const setCoachingTips = useStore((state) => state.setCoachingTips);
+  const currentCoachingTips = useStore((state) => state.currentCoachingTips);
+
+  // Force re-render when tripHistory updates (from hydration or new trips)
+  useEffect(() => {
+    // This effect triggers re-render when tripHistory changes
+    // Critical for EnvironmentalImpactHub to get updated data after hydration
+  }, [tripHistory]);
 
   useEffect(() => { batteryRef.current = battery; }, [battery]);
 
   const riderId = riderName?.toLowerCase().replace(/\s+/g, '-') || 'rider-1';
   const avgSpeed = readingCount > 0 ? speedSum / readingCount : 0;
+
+  // Determine battery theme based on percentage
+  const getBatteryTheme = () => {
+    if (battery >= 50) return 'battery-healthy';
+    if (battery >= 20) return 'battery-warning';
+    return 'battery-critical';
+  };
+
+  const batteryTheme = getBatteryTheme();
 
   // Timer for trip duration (accurate elapsed time)
   useEffect(() => {
@@ -440,7 +458,7 @@ export default function RiderDashboard({ riderName }) {
   };
 
   return (
-    <div className="rider-dashboard">
+    <div className={`rider-dashboard ${batteryTheme}`}>
       <div className="dashboard-tabs">
         <button
           className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
@@ -469,18 +487,66 @@ export default function RiderDashboard({ riderName }) {
           <p className="rider-name-badge">{riderName}</p>
 
           <div className="battery-section">
-            <p><strong>🔋 Battery: {battery}%</strong></p>
+            <p><strong>🔋 Battery Status</strong></p>
+            
+            <div className="battery-gauge">
+              {/* Circular Battery Gauge */}
+              <div className="battery-circle">
+                <svg viewBox="0 0 100 100" className="battery-circle-svg">
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="45"
+                    className="battery-circle-bg"
+                  />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="45"
+                    className="battery-circle-fill"
+                    style={{
+                      strokeDasharray: `${2 * Math.PI * 45}`,
+                      strokeDashoffset: `${2 * Math.PI * 45 * (1 - battery / 100)}`,
+                    }}
+                  />
+                </svg>
+                <div className="battery-circle-text">
+                  <div className="battery-percent">{battery}%</div>
+                  <div className="battery-label">Battery</div>
+                </div>
+              </div>
+
+              {/* Battery Info Panel */}
+              <div className="battery-info">
+                <div className="battery-stat">
+                  <strong>Range:</strong> ~{Math.round((battery / 100) * 160)} km
+                </div>
+                <div className={`battery-stat ${battery < 20 ? 'warning' : ''}`}>
+                  {battery >= 50 && '✓ Good condition - Continue riding'}
+                  {battery >= 20 && battery < 50 && '⚠ Medium level - Find charger soon'}
+                  {battery < 20 && '🔴 Critical - Charge immediately!'}
+                </div>
+                <div className="battery-stat">
+                  <strong>Estimated Time:</strong> {Math.round((battery / 100) * 180)} min
+                </div>
+              </div>
+            </div>
+
+            {/* Secondary Linear Bar */}
             <div className="battery-bar">
               <div
                 className="battery-fill"
                 style={{
                   width: `${battery}%`,
-                  backgroundColor: battery > 60 ? '#4CAF50' : battery > 30 ? '#FFC107' : '#f44336',
                 }}
               />
             </div>
+
             <input
-              type="range" min="0" max="100" value={battery}
+              type="range"
+              min="0"
+              max="100"
+              value={battery}
               onChange={(e) => setBattery(Number(e.target.value))}
               className="battery-slider"
             />
@@ -594,16 +660,18 @@ export default function RiderDashboard({ riderName }) {
       ) : activeTab === 'leaderboard' ? (
         <RiderLeaderboard />
       ) : (
-        <EnvironmentalImpactHub 
-          tripHistory={tripHistory} 
-          currentTrip={{
-            distance: tripDistance,
-            duration: tripDuration,
-            ecoScore: Math.round(ecoScore),
-            avgSpeed: avgSpeed,
-            batteryUsed: 100 - battery,
-          }}
-        />
+        <>
+          <EnvironmentalImpactHub 
+            tripHistory={tripHistory} 
+            currentTrip={{
+              distance: tripDistance,
+              duration: tripDuration,
+              ecoScore: Math.round(ecoScore),
+              avgSpeed: avgSpeed,
+              batteryUsed: 100 - battery,
+            }}
+          />
+        </>
       )}
 
       {/* Coaching Tips Toast (always visible during trip) */}

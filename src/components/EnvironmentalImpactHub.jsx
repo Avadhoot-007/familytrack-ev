@@ -15,10 +15,10 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
   const [showCoachingTips, setShowCoachingTips] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState(null);
 
-  // Aggregate stats from trip history
-  const totalDistance = tripHistory.reduce((sum, t) => sum + (t.distance || 0), 0);
+  // Aggregate stats from trip history - FIX: use correct property names
+  const totalDistance = tripHistory.reduce((sum, t) => sum + (t.distanceKm || t.distance || 0), 0);
   const avgEcoScore = tripHistory.length > 0
-    ? Math.round(tripHistory.reduce((sum, t) => sum + (t.ecoScore || 0), 0) / tripHistory.length)
+    ? Math.round(tripHistory.reduce((sum, t) => sum + (t.score || t.ecoScore || 0), 0) / tripHistory.length)
     : 0;
 
   const { savedCO2, petrolEquivalent } = calculateCO2Savings(totalDistance);
@@ -38,15 +38,15 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
       currentTrip.distance || 0
     );
   } else if (tripHistory.length > 0) {
-    // Use last trip data for tips
+    // Use last trip data for tips - FIX: use correct property names
     const lastTrip = tripHistory[tripHistory.length - 1];
     const worstAxis = lastTrip.worstAxis || 'speed';
     currentTips = getCoachingTips(
-      lastTrip.ecoScore || 0,
+      lastTrip.score || lastTrip.ecoScore || 0,
       worstAxis,
       lastTrip.avgSpeed || 0,
       lastTrip.throttle || [],
-      lastTrip.distance || 0
+      lastTrip.distanceKm || lastTrip.distance || 0
     );
   } else {
     currentTips = getCoachingTips();
@@ -427,7 +427,9 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
             {tripHistory.length > 0 ? (
               <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
                 {tripHistory.slice().reverse().map((trip, idx) => {
-                  const tripCO2 = calculateCO2Savings(trip.distance || 0).savedCO2;
+                  // FIX: use correct property names
+                  const tripCO2 = calculateCO2Savings(trip.distanceKm || trip.distance || 0).savedCO2;
+                  const ecoScore = trip.score || trip.ecoScore || 0;
                   return (
                     <div
                       key={idx}
@@ -436,17 +438,17 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
                         background: '#333',
                         borderRadius: '6px',
                         marginBottom: '8px',
-                        borderLeft: `4px solid ${trip.ecoScore >= 80 ? '#28a745' : trip.ecoScore >= 60 ? '#ffc107' : '#dc3545'}`,
+                        borderLeft: `4px solid ${ecoScore >= 80 ? '#28a745' : ecoScore >= 60 ? '#ffc107' : '#dc3545'}`,
                       }}
                     >
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', fontSize: '12px' }}>
                         <div>
                           <span style={{ color: '#888' }}>Distance</span>
-                          <div style={{ fontWeight: '600', color: '#e0e0e0' }}>{trip.distance?.toFixed(1)} km</div>
+                          <div style={{ fontWeight: '600', color: '#e0e0e0' }}>{(trip.distanceKm || trip.distance || 0).toFixed(1)} km</div>
                         </div>
                         <div>
                           <span style={{ color: '#888' }}>Eco Score</span>
-                          <div style={{ fontWeight: '600', color: '#e0e0e0' }}>{trip.ecoScore}/100</div>
+                          <div style={{ fontWeight: '600', color: '#e0e0e0' }}>{ecoScore}/100</div>
                         </div>
                         <div>
                           <span style={{ color: '#888' }}>CO₂ Saved</span>
@@ -470,9 +472,9 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
                       </div>
                       {selectedTrip?.id === trip.id && (
                         <div style={{ marginTop: '8px', padding: '8px', background: '#404040', borderRadius: '4px', fontSize: '11px', color: '#aaa' }}>
-                          <p>⏱ Duration: {Math.floor((trip.duration || 0) / 60)}m {(trip.duration || 0) % 60}s</p>
-                          <p>🚴 Avg Speed: {trip.avgSpeed?.toFixed(1)} km/h</p>
-                          <p>🔋 Battery Used: {trip.batteryUsed || 0}%</p>
+                          <p>⏱ Duration: {Math.floor((trip.duration || trip.durationSeconds || 0) / 60)}m {(trip.duration || trip.durationSeconds || 0) % 60}s</p>
+                          <p>🚴 Avg Speed: {(trip.avgSpeed || trip.avgSpeedKmh || 0).toFixed(1)} km/h</p>
+                          <p>🔋 Battery Used: {trip.batteryUsed || trip.batteryUsedPercent || 0}%</p>
                         </div>
                       )}
                     </div>
