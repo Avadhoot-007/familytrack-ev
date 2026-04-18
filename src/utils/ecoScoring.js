@@ -12,17 +12,17 @@ const drift = (prev, min, max, maxStep) => {
 export const generateSensorReading = () => {
   if (!_lastReading) {
     _lastReading = {
-      throttle: Math.random() * 50,
-      speed:    Math.random() * 30,
-      accel:    (Math.random() - 0.5) * 0.4,
+      throttle: Math.random() * 100,      // 0-100 (was 0-50, too safe)
+      speed:    Math.random() * 60,       // 0-60 (was 0-30, never reached threshold)
+      accel:    (Math.random() - 0.5) * 1.0,  // -0.5 to +0.5 (was -0.2 to +0.2, too smooth)
     };
     return { ..._lastReading };
   }
 
   _lastReading = {
-    throttle: drift(_lastReading.throttle, 0,  100, 10),
-    speed:    drift(_lastReading.speed,    0,   60,  5),
-    accel:    drift(_lastReading.accel,   -1,    1,  0.2),
+    throttle: drift(_lastReading.throttle, 0,  100, 15),  // Bigger swings (was 10)
+    speed:    drift(_lastReading.speed,    0,   60,  8),  // Bigger variance (was 5)
+    accel:    drift(_lastReading.accel,   -1,    1,  0.3), // More volatile (was 0.2)
   };
 
   return { ..._lastReading };

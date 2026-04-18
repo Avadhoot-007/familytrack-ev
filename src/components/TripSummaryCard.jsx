@@ -5,7 +5,6 @@ import { downloadTripPDF } from '../utils/ecoImpactCalculations';
 import './TripSummaryCard.css';
 
 // Ather Rizta Z Battery Specs (3.7 kWh)
-// Consumption rates: Wh/km
 const BATTERY_SPECS = {
   capacity: 3700, // Wh (3.7 kWh)
   consumption: {
@@ -23,16 +22,17 @@ export default function TripSummaryCard({ trip, riderId }) {
     return <div className="trip-summary-card">No trip data available</div>;
   }
 
-  const distance = trip.distance || 8.2;
-  const duration = trip.duration || 12 * 60; // in seconds
-  const ecoScore = trip.ecoScore || 82;
-  const batteryUsed = trip.batteryUsed || 18;
-  const batteryRemaining = trip.batteryRemaining || 67;
+  // Use trip data as-is (passed from RiderDashboard with real GPS & consumption values)
+  const distance = trip.distance || 0;
+  const duration = trip.duration || 0; // in seconds
+  const ecoScore = trip.ecoScore || 0;
+  const batteryUsed = trip.batteryUsed || 0; // calculated from consumption × distance
+  const batteryRemaining = trip.batteryRemaining || 0; // post-trip battery %
   const timestamp = trip.timestamp || new Date().toISOString();
-  const avgSpeed = trip.avgSpeed || (distance > 0 ? ((distance / duration) * 3600).toFixed(1) : 0);
+  const avgSpeed = trip.avgSpeed || 0;
   const riderName = trip.riderName || 'Rider';
 
-  // Determine ride style based on eco score
+  // Determine ride style from eco score
   const getRideStyle = () => {
     if (ecoScore >= 80) return 'eco';
     if (ecoScore >= 60) return 'normal';
@@ -40,26 +40,31 @@ export default function TripSummaryCard({ trip, riderId }) {
   };
 
   const rideStyle = getRideStyle();
-  const consumptionRate = BATTERY_SPECS.consumption[rideStyle]; // Wh/km
+  const consumptionRate = BATTERY_SPECS.consumption[rideStyle];
 
-  // Calculate battery state in Wh
+  // Calculate battery state in Wh for projections
   const batteryCapacityWh = BATTERY_SPECS.capacity;
   const batteryRemainingWh = (batteryRemaining / 100) * batteryCapacityWh;
 
-  // Calculate realistic range and time projections
+  // Calculate realistic range and time projections for remaining battery
   const calculateProjection = (consumption) => {
-    if (batteryRemaining <= 0) return { range: 0, minutes: 0, hours: 0, mins: 0 };
+    if (batteryRemaining <= 0) return { range: '0', minutes: '0', hours: 0, mins: 0 };
     
     // Range = remaining battery (Wh) / consumption rate (Wh/km)
     const rangeKm = batteryRemainingWh / consumption;
     
-    // Time to empty = range / avg speed (in minutes)
+    // Time to empty = range / avg speed (convert to minutes)
     const avgSpeedKmh = parseFloat(avgSpeed) || 25; // fallback to 25 km/h
     const minutes = avgSpeedKmh > 0 ? (rangeKm / avgSpeedKmh) * 60 : 0;
     const hours = Math.floor(minutes / 60);
     const mins = Math.floor(minutes % 60);
     
-    return { range: rangeKm.toFixed(1), minutes: minutes.toFixed(0), hours, mins };
+    return { 
+      range: rangeKm.toFixed(1), 
+      minutes: minutes.toFixed(0), 
+      hours, 
+      mins 
+    };
   };
 
   const projection = calculateProjection(consumptionRate);
@@ -72,7 +77,16 @@ export default function TripSummaryCard({ trip, riderId }) {
   const tripDate = new Date(timestamp);
   const formattedDate = isNaN(tripDate.getTime()) ? 'Invalid Date' : tripDate.toLocaleDateString();
 
-  // Export PDF using eco impact calculator
+  // Format duration in seconds to readable time
+  const formatDuration = (seconds) => {
+    if (!seconds || seconds <= 0) return '0m';
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) return `${hours}h ${mins}m`;
+    return `${mins}m`;
+  };
+
+  // Export PDF
   const handleExportPDF = async () => {
     setIsGenerating(true);
     try {
@@ -82,7 +96,7 @@ export default function TripSummaryCard({ trip, riderId }) {
         duration: duration,
         ecoScore: ecoScore,
         avgSpeed: parseFloat(avgSpeed),
-        battery: 100 - batteryUsed,
+        battery: batteryRemaining,
         batteryUsed: batteryUsed,
         timestamp: timestamp,
         worstAxis: trip.worstAxis || 'speed',
@@ -95,10 +109,10 @@ export default function TripSummaryCard({ trip, riderId }) {
     }
   };
 
-  // Save trip to Firebase
+  // Save trip to Firebase (usually already saved from RiderDashboard)
   const saveTrip = async () => {
     if (!riderId) {
-      alert('Rider ID is required to save the trip.');
+      alert('Rider ID required.');
       return;
     }
     try {
@@ -114,9 +128,9 @@ export default function TripSummaryCard({ trip, riderId }) {
         rideStyle,
         consumptionWh: consumptionRate,
       });
-      alert('Trip saved to Firebase ✓');
+      alert('Trip saved ✓');
     } catch (error) {
-      alert(`Error saving trip: ${error.message}`);
+      alert(`Error: ${error.message}`);
     }
   };
 
@@ -137,11 +151,7 @@ export default function TripSummaryCard({ trip, riderId }) {
 
         <div className="stat-box">
           <p className="stat-label">Duration</p>
-          <p className="stat-value">
-            {typeof duration === 'number' && duration > 3600
-              ? `${Math.floor(duration / 3600)}h ${Math.floor((duration % 3600) / 60)}m`
-              : `${Math.floor(duration / 60)}m`}
-          </p>
+          <p className="stat-value">{formatDuration(duration)}</p>
         </div>
 
         <div className="stat-box">
@@ -151,7 +161,7 @@ export default function TripSummaryCard({ trip, riderId }) {
 
         <div className="stat-box">
           <p className="stat-label">Battery Used</p>
-          <p className="stat-value">{batteryUsed}%</p>
+          <p className="stat-value">{batteryUsed.toFixed(1)}%</p>
         </div>
       </div>
 

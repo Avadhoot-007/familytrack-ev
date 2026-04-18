@@ -382,8 +382,8 @@ export default function WatcherDashboard() {
         ecoScore: trip.score || 0,
         avgSpeed: trip.avgSpeedKmh || 0,
         timestamp: trip.timestamp,
-        battery: 85,
-        batteryUsed: 15,
+        battery: trip.batteryRemaining || 85,
+        batteryUsed: trip.batteryUsedPercent || 15,
         worstAxis: trip.worstAxis || 'speed',
       });
     } catch (error) {
@@ -570,13 +570,16 @@ export default function WatcherDashboard() {
       </div>
 
       {selectedTrip && (() => {
+        // FIX: Use real battery data from trip instead of hardcoded values
         const tripForCard = {
           distance: selectedTrip.distanceKm || 0,
           duration: selectedTrip.durationSeconds || 0,
           ecoScore: selectedTrip.score || 0,
-          batteryUsed: 15,
-          batteryRemaining: 85,
+          batteryUsed: selectedTrip.batteryUsedPercent || 15,
+          batteryRemaining: selectedTrip.batteryRemaining || 85,
           timestamp: selectedTrip.timestamp,
+          avgSpeed: selectedTrip.avgSpeedKmh || 0,
+          riderName: selectedTrip.riderName || 'Rider',
         };
         return (
           <div
