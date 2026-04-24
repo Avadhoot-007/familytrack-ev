@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ref, onValue, update } from 'firebase/database';
+import { ref, onValue, update, push } from 'firebase/database';
 import { db } from '../config/firebase';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -44,10 +44,9 @@ const createChargingIcon = () =>
     iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -16],
   });
 
-// Battery thresholds (same as RiderDashboard)
 const BATTERY_CRITICAL = 10;
 const BATTERY_LOW      = 25;
-const DRAIN_BASELINE   = 37; // Wh/km
+const DRAIN_BASELINE   = 37;
 const DRAIN_ALERT_RATIO = 1.20;
 
 // ── Weather helpers ──────────────────────────────────────────────────────────
@@ -225,6 +224,113 @@ function TripHistoryTable({ trips, filterDays, onTripClick, onExportPDF }) {
   );
 }
 
+// ── Actionable Alert component ────────────────────────────────────────────────
+function AlertItem({ alert, riders, onSendReminder, onDismiss }) {
+  const bgColor     = alert.type === 'danger'  ? '#f8d7da' : alert.type === 'success' ? '#d4edda' : '#fff3cd';
+  const borderColor = alert.type === 'danger'  ? '#f5c6cb' : alert.type === 'success' ? '#28a745'  : '#ffc107';
+
+  return (
+    <div style={{
+      padding: '10px 12px', margin: '5px 0', background: bgColor,
+      border: `1px solid ${borderColor}`, borderRadius: '6px', fontSize: '13px',
+      fontWeight: alert.type === 'danger' ? 'bold' : 'normal',
+    }}>
+      <div style={{ marginBottom: alert.actionType ? '8px' : 0 }}>{alert.message}</div>
+
+      {/* Charging reminder action */}
+      {alert.actionType === 'charging_reminder' && alert.riderId && (
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => onSendReminder(alert.riderId, alert.riderName, 'low_battery')}
+            style={{
+              padding: '4px 10px', background: '#ffc107', border: 'none',
+              borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+            }}
+          >
+            💬 Send Charging Reminder
+          </button>
+          {alert.stationUrl && (
+            <a
+              href={alert.stationUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                padding: '4px 10px', background: '#17a2b8', color: 'white',
+                borderRadius: '4px', textDecoration: 'none', fontSize: '12px', fontWeight: '600',
+              }}
+            >
+              🗺️ Nearest Station
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* Critical battery action */}
+      {alert.actionType === 'critical_battery' && alert.riderId && (
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => onSendReminder(alert.riderId, alert.riderName, 'critical_battery')}
+            style={{
+              padding: '4px 10px', background: '#dc3545', color: 'white', border: 'none',
+              borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+            }}
+          >
+            🚨 Send Critical Alert
+          </button>
+          {alert.stationUrl && (
+            <a
+              href={alert.stationUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                padding: '4px 10px', background: '#17a2b8', color: 'white',
+                borderRadius: '4px', textDecoration: 'none', fontSize: '12px', fontWeight: '600',
+              }}
+            >
+              🗺️ Open Station in Maps
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* Aggressive drain action */}
+      {alert.actionType === 'drain_warning' && alert.riderId && (
+        <button
+          onClick={() => onSendReminder(alert.riderId, alert.riderName, 'drain_warning')}
+          style={{
+            marginTop: '2px', padding: '4px 10px', background: '#fd7e14', color: 'white',
+            border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+          }}
+        >
+          💬 Send Eco Tip
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Tip templates keyed by type ───────────────────────────────────────────────
+const REMINDER_TIPS = {
+  low_battery: {
+    title: 'Low Battery — Find a Charger',
+    message: 'Your battery is getting low. Please find a charging station soon or head home.',
+    category: 'battery',
+    priority: 'high',
+  },
+  critical_battery: {
+    title: '🚨 Critical Battery — Stop Now',
+    message: 'Battery is critically low! Stop riding immediately and find the nearest charging station.',
+    category: 'battery',
+    priority: 'high',
+  },
+  drain_warning: {
+    title: '⚡ Ease Off Throttle',
+    message: 'You\'re draining battery faster than normal. Smooth acceleration and lower speeds will extend your range significantly.',
+    category: 'throttle',
+    priority: 'medium',
+  },
+};
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function WatcherDashboard() {
   const [riders, setRiders]                   = useState({});
@@ -234,6 +340,7 @@ export default function WatcherDashboard() {
   const [firstOnlineRider, setFirstOnlineRider] = useState(null);
   const [selectedTrip, setSelectedTrip]       = useState(null);
   const [sosRider, setSosRider]               = useState(null);
+  const [reminderStatus, setReminderStatus]   = useState({}); // { [riderId_type]: 'sending'|'sent'|'error' }
 
   // Weather
   const [riderWeather, setRiderWeather]       = useState({});
@@ -244,10 +351,10 @@ export default function WatcherDashboard() {
   const [chargingStations, setChargingStations] = useState([]);
   const chargingFetchedRef                    = useRef(false);
 
-  // Per-rider alert tracking (prevent duplicate alerts)
-  const batteryAlertedRef = useRef({}); // { [riderId]: { low: bool, critical: bool } }
-  const drainAlertedRef   = useRef({}); // { [riderId]: bool }
-  const rangeAlertedRef   = useRef({}); // { [riderId]: bool }
+  // Per-rider alert tracking
+  const batteryAlertedRef = useRef({});
+  const drainAlertedRef   = useRef({});
+  const rangeAlertedRef   = useRef({});
 
   const mapRef          = useRef(null);
   const riderIndexMap   = useRef({});
@@ -300,11 +407,40 @@ export default function WatcherDashboard() {
   const dismissRainPrompt = useCallback((id) => setRainPrompts((p) => p.filter((r) => r.id !== id)), []);
 
   // ── Alert helper ──────────────────────────────────────────────────────────
-  const addAlert = (message, type = 'warning') => {
+  const addAlert = (message, type = 'warning', extra = {}) => {
     setAlerts((prev) => [
-      { id: `alert-${Date.now()}-${Math.random()}`, message, type },
+      { id: `alert-${Date.now()}-${Math.random()}`, message, type, ...extra },
       ...prev.slice(0, 49),
     ]);
+  };
+
+  // ── Send coaching tip reminder to rider via Firebase ──────────────────────
+  const handleSendReminder = async (riderId, riderName, tipType) => {
+    const key = `${riderId}_${tipType}`;
+    setReminderStatus((prev) => ({ ...prev, [key]: 'sending' }));
+
+    const tip = REMINDER_TIPS[tipType];
+    if (!tip) return;
+
+    try {
+      const tipsRef = ref(db, `riders/${riderId}/coachingTips`);
+      await push(tipsRef, {
+        ...tip,
+        sentBy: 'watcher',
+        sentAt: new Date().toISOString(),
+        read: false,
+      });
+      setReminderStatus((prev) => ({ ...prev, [key]: 'sent' }));
+      // Auto-clear "sent" status after 4s
+      setTimeout(() => setReminderStatus((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }), 4000);
+    } catch (err) {
+      console.error('Failed to send reminder:', err);
+      setReminderStatus((prev) => ({ ...prev, [key]: 'error' }));
+    }
   };
 
   // ── Firebase listener ─────────────────────────────────────────────────────
@@ -314,7 +450,6 @@ export default function WatcherDashboard() {
       const data = snapshot.val();
       if (!data) return;
 
-      // Assign colours
       Object.keys(data).forEach((riderId) => {
         if (riderIndexMap.current[riderId] === undefined) {
           const idx = Object.keys(riderIndexMap.current).length;
@@ -342,51 +477,81 @@ export default function WatcherDashboard() {
         const riderName = loc.name || riderId;
         if (!validCoords(loc.lat, lon)) return;
 
-        // ── Battery alerts ──
+        // ── Battery alerts with action buttons ──
         const bat = Number(loc.battery ?? 100);
         if (!batteryAlertedRef.current[riderId]) batteryAlertedRef.current[riderId] = {};
         const ba = batteryAlertedRef.current[riderId];
 
         if (bat <= BATTERY_CRITICAL && !ba.critical) {
           ba.critical = true;
-          addAlert(`🚨 ${riderName} battery CRITICAL (${bat}%)! They need to stop and charge immediately.`, 'danger');
+          // Build nearest station Maps URL if we have any stations loaded
+          const nearestStation = null; // will be enriched below if we have stations
+          addAlert(
+            `🚨 ${riderName} battery CRITICAL (${bat}%)! They need to stop and charge immediately.`,
+            'danger',
+            {
+              actionType: 'critical_battery',
+              riderId,
+              riderName,
+              stationUrl: `https://www.google.com/maps/search/EV+charging+station/@${loc.lat},${lon},15z`,
+            }
+          );
+          // Also fetch map stations if not done yet
+          if (isOnline) fetchMapStations(loc.lat, lon);
         } else if (bat <= BATTERY_LOW && bat > BATTERY_CRITICAL && !ba.low) {
           ba.low = true;
-          addAlert(`🔋 ${riderName} battery is low (${bat}%). Consider sending a charging reminder.`, 'warning');
+          addAlert(
+            `🔋 ${riderName} battery is low (${bat}%). Consider sending a charging reminder.`,
+            'warning',
+            {
+              actionType: 'charging_reminder',
+              riderId,
+              riderName,
+              stationUrl: `https://www.google.com/maps/search/EV+charging+station/@${loc.lat},${lon},15z`,
+            }
+          );
         }
-        // Reset flags when battery rises (e.g. after simulated charging)
+
         if (bat > BATTERY_LOW) { ba.low = false; ba.critical = false; }
         else if (bat > BATTERY_CRITICAL) { ba.critical = false; }
 
-        // ── Fetch charging stations for map once low battery online rider found ──
-        if (isOnline && bat <= BATTERY_LOW) {
-          fetchMapStations(loc.lat, lon);
-        }
+        if (isOnline && bat <= BATTERY_LOW) fetchMapStations(loc.lat, lon);
 
-        // ── Trip-based alerts: drain rate + projected range ──
+        // ── Trip-based alerts ──
         const trips = riderData.trips ? Object.values(riderData.trips) : [];
         if (trips.length > 0) {
           const latest = trips.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
 
-          // Drain rate alert
           if (latest.consumptionWh && latest.distanceKm > 0) {
             const drainWh = Number(latest.consumptionWh);
             if (drainWh > DRAIN_BASELINE * DRAIN_ALERT_RATIO && !drainAlertedRef.current[riderId]) {
               drainAlertedRef.current[riderId] = true;
-              addAlert(`⚡ ${riderName} is draining battery fast (${drainWh} Wh/km vs ${DRAIN_BASELINE} normal). They may be riding aggressively.`, 'warning');
+              addAlert(
+                `⚡ ${riderName} is draining battery fast (${drainWh} Wh/km vs ${DRAIN_BASELINE} normal). They may be riding aggressively.`,
+                'warning',
+                { actionType: 'drain_warning', riderId, riderName }
+              );
             } else if (drainWh <= DRAIN_BASELINE * DRAIN_ALERT_RATIO) {
               drainAlertedRef.current[riderId] = false;
             }
           }
 
-          // Projected range alert
           if (latest.batteryRemaining != null) {
             const remainingWh = (Number(latest.batteryRemaining) / 100) * 3700;
             const drainRate   = latest.consumptionWh || DRAIN_BASELINE;
             const projRange   = remainingWh / drainRate;
             if (projRange < 5 && !rangeAlertedRef.current[riderId]) {
               rangeAlertedRef.current[riderId] = true;
-              addAlert(`📍 ${riderName} has less than 5 km range remaining! Send them to a charging station.`, 'danger');
+              addAlert(
+                `📍 ${riderName} has less than 5 km range remaining! Send them to a charging station.`,
+                'danger',
+                {
+                  actionType: 'critical_battery',
+                  riderId,
+                  riderName,
+                  stationUrl: `https://www.google.com/maps/search/EV+charging+station/@${loc.lat},${lon},15z`,
+                }
+              );
             } else if (projRange >= 5) {
               rangeAlertedRef.current[riderId] = false;
             }
@@ -612,21 +777,30 @@ export default function WatcherDashboard() {
         {/* Alerts panel */}
         <div>
           <h3>Recent Alerts</h3>
+
+          {/* Reminder sent feedback */}
+          {Object.entries(reminderStatus).map(([key, status]) => (
+            <div key={key} style={{
+              padding: '8px 12px', marginBottom: '6px', borderRadius: '6px', fontSize: '13px',
+              background: status === 'sent' ? '#d4edda' : status === 'error' ? '#f8d7da' : '#fff3cd',
+              border: `1px solid ${status === 'sent' ? '#28a745' : status === 'error' ? '#dc3545' : '#ffc107'}`,
+            }}>
+              {status === 'sending' && '⏳ Sending reminder...'}
+              {status === 'sent'    && '✓ Reminder sent to rider'}
+              {status === 'error'   && '✕ Failed to send — check connection'}
+            </div>
+          ))}
+
           <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
             {!alerts.length && <p style={{ color: '#999', fontSize: '14px' }}>No alerts yet.</p>}
-            {alerts.map((alert) => {
-              const bgColor     = alert.type === 'danger' ? '#f8d7da' : alert.type === 'success' ? '#d4edda' : '#fff3cd';
-              const borderColor = alert.type === 'danger' ? '#f5c6cb' : alert.type === 'success' ? '#28a745' : '#ffc107';
-              return (
-                <div key={alert.id} style={{
-                  padding: '10px', margin: '5px 0', background: bgColor,
-                  border: `1px solid ${borderColor}`, borderRadius: '4px', fontSize: '14px',
-                  fontWeight: alert.type === 'danger' ? 'bold' : 'normal',
-                }}>
-                  {alert.message}
-                </div>
-              );
-            })}
+            {alerts.map((alert) => (
+              <AlertItem
+                key={alert.id}
+                alert={alert}
+                riders={riders}
+                onSendReminder={handleSendReminder}
+              />
+            ))}
           </div>
         </div>
       </div>
