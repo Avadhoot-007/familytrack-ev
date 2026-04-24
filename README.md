@@ -3,41 +3,37 @@
 A comprehensive family safety and eco-tracking application for electric vehicle riders. Monitor real-time location, battery levels, and driving efficiency while ensuring safety through geofencing and emergency alerts.
 
 ## 🌟 Features
-
 ### For Riders 👤
-- **Real-time Location Sharing**: Share your location with family members during rides
-- **Eco-Score Tracking**: Monitor driving efficiency with live scoring based on throttle, speed, and acceleration
-- **Battery Monitoring**: Track battery usage and receive low-battery warnings with adjustable battery levels
-- **Trip Logging**: Automatic trip recording with distance, duration, and performance metrics
-- **Emergency SOS**: Hold-to-activate emergency alerts with location and battery info
-- **Coaching Tips**: Real-time personalized driving tips based on eco-scores during rides
-- **Trip Simulation**: Generate realistic demo trips for testing and demonstration
-- **Trip Analytics**: Detailed trip summaries with PDF export capabilities
-- **Environmental Impact**: Track CO₂ savings, tree equivalents, and earn carbon offset badges
-- **Rider Leaderboard**: Compare performance with other family members
+- **Real-time Location Sharing**: Share live GPS location while riding; updates sync to Firebase in real-time.
+- **Eco-Score Tracking**: Live eco-scoring computed from throttle, speed and acceleration with color-coded feedback.
+- **Battery Monitoring & Projections**: Track battery %, projected range (Wh/km), drain-rate alerts and critical warnings.
+- **Trip Logging & Simulation**: Automatic trip recording plus realistic demo profiles (simulated trips are flagged).
+- **Hold-to-Activate SOS**: 5s hold-to-activate SOS (countdown) that logs location, battery and notifies watchers.
+- **Coaching Tips (Rider Inbox)**: Receive tips sent by watchers or auto-generated tips based on trip analysis; unread badge and dismissible tips.
+- **Nearby Charging Stations**: Lookup chargers using OpenStreetMap/Overpass with client-side caching and Google Maps links.
+- **Trip Summary & PDF Export**: Export trip summaries and environmental impact reports as downloadable PDFs.
 
 ### For Watchers 👁️
-- **Live Map View**: See all family members' locations on an interactive map with Leaflet
-- **Geofencing Alerts**: Get notified when riders enter/leave predefined safe zones
-- **Trip Analytics**: View detailed trip history, leaderboards, and performance stats
-- **Coaching Tips**: Send personalized driving tips based on eco-scores
-- **Emergency Response**: Receive immediate SOS alerts with location data and Google Maps integration
-- **Real-time Monitoring**: Track rider status, battery levels, and online/offline status
-- **Trip History**: Comprehensive trip data with filtering (7 days, 30 days, all time)
-- **PDF Exports**: Download detailed trip summaries and reports
+- **Live Map with Leaflet**: Interactive map showing online/offline riders, custom markers, geofences and nearby chargers.
+- **SOS Alerts & Actions**: Immediate SOS modal with location and direct Google Maps link; mark SOS as resolved from watcher UI.
+- **Geofence Notifications**: Enter/exit alerts for configurable safe zones (see `src/data/geofences.js`).
+- **Alerts Panel & Actions**: Battery/drain/weather alerts with one-click actions to send coaching reminders to riders.
+- **Trip History, Exports & Leaderboard**: Browse trips, filter by time window, export PDFs and view eco leaderboards across riders.
+- **Weather Overlay (Optional)**: Integrates OpenWeatherMap for rain warnings and automated watch-side prompts (requires `VITE_OPENWEATHER_API_KEY`).
 
-### Core Features 🔧
-- **Real-time Firebase Sync**: Live data synchronization across devices with Firebase Realtime Database
-- **State Management**: Efficient state handling with Zustand
-- **Responsive Design**: Works seamlessly on desktop and mobile devices
-- **Offline Support**: Basic functionality without internet (limited)
-- **PDF Trip Exports**: Download detailed trip summaries with jsPDF
-- **Battery Projections**: Estimate range based on current driving style and consumption rates
-- **Environmental Impact Hub**: Track carbon footprint, earn badges, and view eco-leaderboards
-- **Coaching Tips System**: AI-powered driving improvement suggestions
-- **Trip Simulation**: Realistic demo data generation for testing
-- **Geofencing**: Configurable safe zones with automatic alerts
-- **Emergency SOS System**: Immediate alert system with location sharing
+### Core & Notable Implementations 🔧
+- **Realtime Sync & Auth**: Anonymous Firebase Auth (optional) and Realtime Database for live location, trip and SOS state.
+- **State Persistence & Hydration**: Zustand store with local persistence and Firebase hydration fallback (`hydrateTripsFromStorage`).
+- **Charging Stations (Overpass API)**: Charger lookup via OpenStreetMap Overpass API with 5-minute client cache to reduce requests.
+- **Drain-rate & Range Estimation**: Calculates Wh/km drain rate, issues alerts when drain exceeds a configurable baseline.
+- **Trip PDF Generation**: Two PDF utilities for watcher/rider exports — ASCII-safe PDF generation with dynamic stream length handling.
+- **Coaching Tips Flow**: Tips can be auto-generated from trip analysis or pushed by watchers; saved under `riders/{riderId}/coachingTips` in Firebase.
+- **Geofencing**: Configurable geofence list in `src/data/geofences.js`, used by watcher to generate enter/leave alerts.
+- **SOS Workflow**: SOS sets `sosTriggered`, `sosTimestamp`, `sosLocation`, `sosBattery`, and `sosRiderName` in the rider node — watchers subscribe and surface an emergency modal.
+- **Trip Simulation Profiles**: Built-in demo ride profiles to test UI, scoring, PDF export and badge unlocking. Simulated trips include `isSimulated: true`.
+- **Weather & Safety Prompts**: Optional rain detection triggers watcher prompts and suggests sending safety tips.
+
+If you want a short changelog of recent additions, let me know and I can append it here.
 
 ## 🛠️ Tech Stack
 
