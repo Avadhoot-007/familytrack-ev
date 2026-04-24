@@ -305,6 +305,19 @@ function AlertItem({ alert, riders, onSendReminder, onDismiss }) {
           💬 Send Eco Tip
         </button>
       )}
+
+      {/* Rain tip action */}
+      {alert.actionType === 'rain_tip' && alert.riderId && (
+        <button
+          onClick={() => onSendReminder(alert.riderId, alert.riderName, 'rain_tip')}
+          style={{
+            marginTop: '2px', padding: '4px 10px', background: '#1565c0', color: 'white',
+            border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+          }}
+        >
+          🌧️ Send Rain Warning
+        </button>
+      )}
     </div>
   );
 }
@@ -328,6 +341,12 @@ const REMINDER_TIPS = {
     message: 'You\'re draining battery faster than normal. Smooth acceleration and lower speeds will extend your range significantly.',
     category: 'throttle',
     priority: 'medium',
+  },
+  rain_tip: {
+    title: '🌧️ Rain Alert — Slow Down',
+    message: 'It\'s raining in your area. Reduce speed, increase following distance, and avoid sharp braking. Stay safe!',
+    category: 'weather',
+    priority: 'high',
   },
 };
 
@@ -398,7 +417,11 @@ export default function WatcherDashboard() {
         const promptId = `rain-${riderId}-${Date.now()}`;
         const message = `It's raining near ${riderName} (${weather.description}, ${weather.temp}°C) — send a reminder to slow down?`;
         setRainPrompts((prev) => [...prev, { id: promptId, message }]);
-        addAlert(`🌧️ Rain near ${riderName}: ${weather.description}, ${weather.temp}°C. Remind them to slow down.`, 'warning');
+        addAlert(
+          `🌧️ Rain near ${riderName}: ${weather.description}, ${weather.temp}°C.`,
+          'warning',
+          { actionType: 'rain_tip', riderId, riderName }
+        );
       }
       if (!isRaining(weather.id)) rainPromptedRef.current[riderId] = false;
     }));

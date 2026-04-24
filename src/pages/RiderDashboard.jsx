@@ -11,6 +11,7 @@ import EnvironmentalImpactHub from '../components/EnvironmentalImpactHub';
 import CoachingTipsSystem from '../components/CoachingTipsSystem';
 import TripSummaryCard from '../components/TripSummaryCard';
 import { getCoachingTips } from '../utils/ecoImpactCalculations';
+import RiderTipsInbox from '../components/RiderTipsInbox';
 import './RiderDashboard.css';
 
 // Ather Rizta Z Battery Specs
@@ -786,6 +787,8 @@ export default function RiderDashboard({ riderName }) {
       {isSharing && currentCoachingTips.length > 0 && (
         <CoachingTipsSystem tips={currentCoachingTips} ecoScore={Math.round(ecoScore)} />
       )}
+
+      <RiderTipsInbox riderId={riderId} />
 
       <SOSModal
         isOpen={sosModalOpen}
