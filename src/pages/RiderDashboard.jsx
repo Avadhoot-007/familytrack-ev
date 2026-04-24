@@ -3,6 +3,7 @@ import { ref, set } from 'firebase/database';
 import { db } from '../config/firebase';
 import { generateSensorReading, calculateEcoScore, calculateTripStats, getEcoScoreColor } from '../utils/ecoScoring';
 import { calculateDistance } from '../services/locationService';
+import { fetchChargingStations, buildMapsUrl } from '../services/chargingStations';
 import { useStore } from '../store';
 import RiderLeaderboard from "../components/RiderLeaderboard";
 import SOSModal from "../components/SOSModal";
@@ -14,51 +15,151 @@ import './RiderDashboard.css';
 
 // Ather Rizta Z Battery Specs
 const BATTERY_SPECS = {
-  capacity: 3700, // Wh (3.7 kWh)
-  consumption: {
-    eco: 33,
-    normal: 37,
-    aggressive: 46,
-  },
+  capacity: 3700,
+  consumption: { eco: 33, normal: 37, aggressive: 46 },
 };
 
+// Battery thresholds
+const BATTERY_BLOCK    = 0;   // hard block start
+const BATTERY_CRITICAL = 10;  // modal + persistent toast
+const BATTERY_LOW      = 25;  // dismissible toast + fetch stations
+
+// Drain rate baseline Wh/km (normal riding)
+const DRAIN_BASELINE_WH_KM = 37;
+const DRAIN_ALERT_RATIO    = 1.20; // 20% above baseline
+
 export default function RiderDashboard({ riderName }) {
-  const [isSharing, setIsSharing] = useState(false);
-  const [battery, setBattery] = useState(85);
-  const [location, setLocation] = useState(null);
-  const [ecoScore, setEcoScore] = useState(0);
-  const [tripDistance, setTripDistance] = useState(0);
-  const [readings, setReadings] = useState([]);
-  const [tripDuration, setTripDuration] = useState(0);
-  const [tripStarted, setTripStarted] = useState(false);
-  const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [sosModalOpen, setSOSModalOpen] = useState(false);
-  const [tripData, setTripData] = useState(null);
-  const [showTripSummary, setShowTripSummary] = useState(false);
-  const [isSimulating, setIsSimulating] = useState(false);
+  const [isSharing, setIsSharing]               = useState(false);
+  const [battery, setBattery]                   = useState(85);
+  const [location, setLocation]                 = useState(null);
+  const [ecoScore, setEcoScore]                 = useState(0);
+  const [tripDistance, setTripDistance]         = useState(0);
+  const [readings, setReadings]                 = useState([]);
+  const [tripDuration, setTripDuration]         = useState(0);
+  const [tripStarted, setTripStarted]           = useState(false);
+  const [error, setError]                       = useState(null);
+  const [activeTab, setActiveTab]               = useState('dashboard');
+  const [sosModalOpen, setSOSModalOpen]         = useState(false);
+  const [tripData, setTripData]                 = useState(null);
+  const [showTripSummary, setShowTripSummary]   = useState(false);
+  const [isSimulating, setIsSimulating]         = useState(false);
 
-  const batteryRef = useRef(battery);
-  const watchIdRef = useRef(null);
-  const lastLocationRef = useRef(null);
-  const tripStartTimeRef = useRef(null);
-  const simulationIntervalRef = useRef(null);
+  // Battery alert state
+  const [toasts, setToasts]                     = useState([]);      // [{id,msg,type}]
+  const [criticalModal, setCriticalModal]       = useState(false);   // 10% modal
+  const [startBlockModal, setStartBlockModal]   = useState(false);   // 0% block modal
 
-  const tripHistory = useStore((state) => state.tripHistory);
-  const addCompletedTrip = useStore((state) => state.addCompletedTrip);
-  const setCoachingTips = useStore((state) => state.setCoachingTips);
-  const currentCoachingTips = useStore((state) => state.currentCoachingTips);
+  // Charging stations
+  const [stations, setStations]                 = useState([]);
+  const [stationsLoading, setStationsLoading]   = useState(false);
+  const [showStations, setShowStations]         = useState(false);
+  const stationsFetchedRef                      = useRef(false);
 
-  useEffect(() => {}, [tripHistory]);
+  // Drain rate
+  const [drainRate, setDrainRate]               = useState(null); // Wh/km live
+  const [drainAlert, setDrainAlert]             = useState(false);
+  const startBatteryRef                         = useRef(null);
+
+  const batteryRef          = useRef(battery);
+  const watchIdRef          = useRef(null);
+  const lastLocationRef     = useRef(null);
+  const tripStartTimeRef    = useRef(null);
+
+  // Toast dismissed tracking
+  const lowToastShownRef      = useRef(false);
+  const criticalToastShownRef = useRef(false);
+
+  const tripHistory       = useStore((s) => s.tripHistory);
+  const addCompletedTrip  = useStore((s) => s.addCompletedTrip);
+  const setCoachingTips   = useStore((s) => s.setCoachingTips);
+  const currentCoachingTips = useStore((s) => s.currentCoachingTips);
+
   useEffect(() => { batteryRef.current = battery; }, [battery]);
 
   const riderId = riderName?.toLowerCase().replace(/\s+/g, '-') || 'rider-1';
 
-  // --- FIXED: avg speed from distance / elapsed time ---
-  // Returns km/h. Returns 0 if trip hasn't started or duration is zero.
+  // ── Toast helpers ──────────────────────────────────────────────────────────
+  const addToast = (msg, type = 'warning', durationMs = 6000) => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setToasts((prev) => [...prev, { id, msg, type }]);
+    if (durationMs > 0) {
+      setTimeout(() => removeToast(id), durationMs);
+    }
+    return id;
+  };
+
+  const removeToast = (id) => setToasts((prev) => prev.filter((t) => t.id !== id));
+
+  // ── Battery threshold monitoring ───────────────────────────────────────────
+  useEffect(() => {
+    if (!isSharing) return;
+
+    if (battery <= BATTERY_LOW && battery > BATTERY_CRITICAL && !lowToastShownRef.current) {
+      lowToastShownRef.current = true;
+      addToast(`🔋 Battery at ${battery}% — consider finding a charging station soon.`, 'warning', 8000);
+      if (location) fetchNearbyStations(location.latitude, location.longitude);
+    }
+
+    if (battery <= BATTERY_CRITICAL && !criticalToastShownRef.current) {
+      criticalToastShownRef.current = true;
+      addToast(`🚨 Critical battery (${battery}%)! Stop and charge immediately.`, 'critical', 0); // persistent
+      setCriticalModal(true);
+      if (location) fetchNearbyStations(location.latitude, location.longitude);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [battery, isSharing]);
+
+  // ── Charging stations fetch ────────────────────────────────────────────────
+  const fetchNearbyStations = async (lat, lon) => {
+    if (stationsFetchedRef.current) return;
+    stationsFetchedRef.current = true;
+    setStationsLoading(true);
+    try {
+      const results = await fetchChargingStations(lat, lon, 3);
+      setStations(results);
+      if (results.length > 0) setShowStations(true);
+    } catch (e) {
+      console.error('Station fetch error:', e);
+    } finally {
+      setStationsLoading(false);
+    }
+  };
+
+  // ── Live drain rate calculation ────────────────────────────────────────────
+  useEffect(() => {
+    if (!isSharing || tripDistance < 0.3) return; // need at least 300m for valid rate
+
+    const batteryUsedPct = (startBatteryRef.current ?? battery) - battery;
+    if (batteryUsedPct <= 0) return;
+
+    const batteryUsedWh = (batteryUsedPct / 100) * BATTERY_SPECS.capacity;
+    const rate = batteryUsedWh / tripDistance; // Wh/km
+    setDrainRate(parseFloat(rate.toFixed(1)));
+
+    if (rate > DRAIN_BASELINE_WH_KM * DRAIN_ALERT_RATIO && !drainAlert) {
+      setDrainAlert(true);
+      addToast(
+        `⚡ High drain rate (${rate.toFixed(0)} Wh/km vs ${DRAIN_BASELINE_WH_KM} normal) — ease off throttle.`,
+        'warning',
+        8000
+      );
+    } else if (rate <= DRAIN_BASELINE_WH_KM * DRAIN_ALERT_RATIO) {
+      setDrainAlert(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tripDistance, battery]);
+
+  // ── Projected range remaining ──────────────────────────────────────────────
+  const getProjectedRange = () => {
+    const rate = drainRate && drainRate > 0 ? drainRate : DRAIN_BASELINE_WH_KM;
+    const remainingWh = (battery / 100) * BATTERY_SPECS.capacity;
+    return (remainingWh / rate).toFixed(1);
+  };
+
+  // ── Avg speed ─────────────────────────────────────────────────────────────
   const getAvgSpeed = () => {
     if (tripDuration <= 0 || tripDistance <= 0) return 0;
-    return (tripDistance / (tripDuration / 3600)); // km / hours
+    return tripDistance / (tripDuration / 3600);
   };
 
   const getBatteryTheme = () => {
@@ -66,36 +167,29 @@ export default function RiderDashboard({ riderName }) {
     if (battery >= 20) return 'battery-warning';
     return 'battery-critical';
   };
-  const batteryTheme = getBatteryTheme();
 
-  // Trip duration timer
+  // ── Trip duration timer ────────────────────────────────────────────────────
   useEffect(() => {
     if (!tripStarted) return;
-    const interval = setInterval(() => {
-      setTripDuration((prev) => prev + 1);
-    }, 1000);
+    const interval = setInterval(() => setTripDuration((p) => p + 1), 1000);
     return () => clearInterval(interval);
   }, [tripStarted]);
 
-  // Sensor readings interval
+  // ── Sensor readings ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isSharing) return;
     const interval = setInterval(() => {
       const reading = generateSensorReading();
       setReadings((prev) => [...prev, reading]);
-      const score = calculateEcoScore(reading.throttle, reading.speed, reading.accel);
-      setEcoScore(score);
+      setEcoScore(calculateEcoScore(reading.throttle, reading.speed, reading.accel));
     }, 5000);
     return () => clearInterval(interval);
   }, [isSharing]);
 
-  // Geolocation watcher
+  // ── Geolocation watcher ────────────────────────────────────────────────────
   useEffect(() => {
     if (!isSharing) return;
-    if (!navigator.geolocation) {
-      setError('Geolocation not supported');
-      return;
-    }
+    if (!navigator.geolocation) { setError('Geolocation not supported'); return; }
 
     const id = navigator.geolocation.watchPosition(
       (position) => {
@@ -106,47 +200,34 @@ export default function RiderDashboard({ riderName }) {
         if (lastLocationRef.current) {
           try {
             const distDelta = calculateDistance(
-              lastLocationRef.current.latitude,
-              lastLocationRef.current.longitude,
-              latitude,
-              longitude
+              lastLocationRef.current.latitude, lastLocationRef.current.longitude,
+              latitude, longitude
             );
             setTripDistance((prev) => prev + distDelta);
-          } catch (err) {
-            console.error('Distance calc error:', err);
-          }
+          } catch (err) { console.error('Distance calc error:', err); }
         }
-
         lastLocationRef.current = { latitude, longitude };
 
-        const locationRef = ref(db, `riders/${riderId}/location`);
-        set(locationRef, {
-          lat: latitude,
-          lon: longitude,
-          name: riderName,
+        set(ref(db, `riders/${riderId}/location`), {
+          lat: latitude, lon: longitude, name: riderName,
           timestamp: new Date().toISOString(),
-          battery: batteryRef.current,
-          accuracy,
-        }).catch((err) => setError(err.message));
-
-        const statusRef = ref(db, `riders/${riderId}/status`);
-        set(statusRef, 'online').catch((err) => setError(err.message));
+          battery: batteryRef.current, accuracy,
+        }).catch((e) => setError(e.message));
+        set(ref(db, `riders/${riderId}/status`), 'online').catch((e) => setError(e.message));
       },
-      (err) => {
-        console.error('Geolocation error:', err);
-        setError(`GPS Error: ${err.message}`);
-      },
+      (err) => { console.error('Geolocation error:', err); setError(`GPS Error: ${err.message}`); },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 
     watchIdRef.current = id;
-    return () => {
-      navigator.geolocation.clearWatch(id);
-      watchIdRef.current = null;
-    };
+    return () => { navigator.geolocation.clearWatch(id); watchIdRef.current = null; };
   }, [isSharing, riderName, riderId]);
 
+  // ── Start sharing ─────────────────────────────────────────────────────────
   const handleStartSharing = () => {
+    if (battery <= BATTERY_BLOCK) { setStartBlockModal(true); return; }
+    if (battery <= BATTERY_CRITICAL) { setCriticalModal(true); return; }
+
     setIsSharing(true);
     setTripStarted(true);
     setEcoScore(0);
@@ -154,96 +235,71 @@ export default function RiderDashboard({ riderName }) {
     setReadings([]);
     setTripDuration(0);
     setError(null);
+    setDrainRate(null);
+    setDrainAlert(false);
+    lowToastShownRef.current = false;
+    criticalToastShownRef.current = false;
+    stationsFetchedRef.current = false;
+    startBatteryRef.current = battery;
     tripStartTimeRef.current = Date.now();
     lastLocationRef.current = null;
   };
 
+  // ── Stop sharing ──────────────────────────────────────────────────────────
   const handleStopSharing = async () => {
     if (!isSharing) return;
     setIsSharing(false);
     setTripStarted(false);
 
-    // Snapshot avg speed at stop time using current state values.
-    // We read tripDistance and tripDuration directly from state via closure —
-    // they are accurate at the moment of calling handleStopSharing.
     const finalAvgSpeed = tripDuration > 0 && tripDistance > 0
-      ? parseFloat((tripDistance / (tripDuration / 3600)).toFixed(1))
-      : 0;
+      ? parseFloat((tripDistance / (tripDuration / 3600)).toFixed(1)) : 0;
 
     try {
-      const tripId = `trip-${Date.now()}`;
-      const tripRef = ref(db, `riders/${riderId}/trips/${tripId}`);
+      const tripId    = `trip-${Date.now()}`;
       const tripStats = calculateTripStats(readings);
       const tripEcoScore = tripStats.avg;
-      const worstAxis = tripStats.worstAxis;
-
-      const getRideStyle = () => {
-        if (tripEcoScore >= 80) return 'eco';
-        if (tripEcoScore >= 60) return 'normal';
-        return 'aggressive';
-      };
-      const rideStyle = getRideStyle();
-
-      const consumptionRate = BATTERY_SPECS.consumption[rideStyle];
-      const batteryUsedWh = tripDistance * consumptionRate;
+      const worstAxis    = tripStats.worstAxis;
+      const rideStyle    = tripEcoScore >= 80 ? 'eco' : tripEcoScore >= 60 ? 'normal' : 'aggressive';
+      const consumptionRate    = BATTERY_SPECS.consumption[rideStyle];
+      const batteryUsedWh      = tripDistance * consumptionRate;
       const batteryUsedPercent = (batteryUsedWh / BATTERY_SPECS.capacity) * 100;
-      const batteryRemaining = batteryRef.current - batteryUsedPercent;
+      const batteryRemaining   = batteryRef.current - batteryUsedPercent;
 
       const tripDataObj = {
         timestamp: new Date().toISOString(),
         distanceKm: parseFloat(tripDistance.toFixed(2)),
-        avgSpeedKmh: finalAvgSpeed,  // FIXED: real distance/time speed
+        avgSpeedKmh: finalAvgSpeed,
         score: tripEcoScore,
         readingCount: readings.length,
         durationSeconds: tripDuration,
         startLat: location?.latitude ?? null,
         startLon: location?.longitude ?? null,
-        worstAxis,
-        rideStyle,
+        worstAxis, rideStyle,
         consumptionWh: consumptionRate,
         batteryUsedPercent: parseFloat(batteryUsedPercent.toFixed(1)),
         batteryRemaining: Math.max(0, parseFloat(batteryRemaining.toFixed(1))),
       };
 
-      await set(tripRef, tripDataObj);
+      await set(ref(db, `riders/${riderId}/trips/${tripId}`), tripDataObj);
 
       addCompletedTrip({
-        riderName,
-        distance: tripDataObj.distanceKm,
-        duration: tripDataObj.durationSeconds,
-        ecoScore: tripDataObj.score,
-        avgSpeed: tripDataObj.avgSpeedKmh,
-        battery: batteryRef.current,
-        batteryUsed: tripDataObj.batteryUsedPercent,
-        worstAxis,
+        riderName, distance: tripDataObj.distanceKm, duration: tripDataObj.durationSeconds,
+        ecoScore: tripDataObj.score, avgSpeed: tripDataObj.avgSpeedKmh,
+        battery: batteryRef.current, batteryUsed: tripDataObj.batteryUsedPercent, worstAxis,
         timestamp: tripDataObj.timestamp,
       });
 
-      const tips = getCoachingTips(
-        tripEcoScore,
-        worstAxis,
-        finalAvgSpeed,
-        readings.map(r => r.throttle),
-        tripDistance
-      );
+      const tips = getCoachingTips(tripEcoScore, worstAxis, finalAvgSpeed, readings.map(r => r.throttle), tripDistance);
       setCoachingTips(tips);
 
       setTripData({
-        riderName,
-        distance: tripDataObj.distanceKm,
-        duration: tripDataObj.durationSeconds,
-        ecoScore: tripEcoScore,
-        avgSpeed: tripDataObj.avgSpeedKmh,
-        batteryUsed: tripDataObj.batteryUsedPercent,
-        batteryRemaining: tripDataObj.batteryRemaining,
-        worstAxis,
-        timestamp: tripDataObj.timestamp,
+        riderName, distance: tripDataObj.distanceKm, duration: tripDataObj.durationSeconds,
+        ecoScore: tripEcoScore, avgSpeed: tripDataObj.avgSpeedKmh,
+        batteryUsed: tripDataObj.batteryUsedPercent, batteryRemaining: tripDataObj.batteryRemaining,
+        worstAxis, timestamp: tripDataObj.timestamp,
       });
       setShowTripSummary(true);
-
-      const statusRef = ref(db, `riders/${riderId}/status`);
-      await set(statusRef, 'offline');
-
+      await set(ref(db, `riders/${riderId}/status`), 'offline');
       setReadings([]);
     } catch (error) {
       console.error('Error saving trip:', error);
@@ -251,28 +307,27 @@ export default function RiderDashboard({ riderName }) {
     }
   };
 
+  // ── Simulate trip ─────────────────────────────────────────────────────────
   const handleSimulateTrip = async () => {
+    if (battery <= BATTERY_BLOCK) { setStartBlockModal(true); return; }
+
     setIsSimulating(true);
     try {
       const DEMO_PROFILES = [
-        { distance: 3.2, duration: 600,  ecoScore: 82, speedAvg: 19.2, style: 'eco',        name: 'Eco Ride' },
-        { distance: 5.8, duration: 900,  ecoScore: 65, speedAvg: 23.2, style: 'normal',     name: 'Normal Ride' },
-        { distance: 2.1, duration: 420,  ecoScore: 42, speedAvg: 18.0, style: 'aggressive', name: 'Aggressive Ride' },
-        { distance: 4.5, duration: 720,  ecoScore: 55, speedAvg: 22.5, style: 'normal',     name: 'Mixed Ride' },
-        { distance: 6.3, duration: 1080, ecoScore: 88, speedAvg: 21.0, style: 'eco',        name: 'Very Eco Ride' },
-        { distance: 3.8, duration: 540,  ecoScore: 35, speedAvg: 25.3, style: 'aggressive', name: 'City Rush' },
-        { distance: 2.5, duration: 480,  ecoScore: 48, speedAvg: 18.75,style: 'normal',     name: 'Moderate Ride' },
+        { distance: 3.2, duration: 600,  ecoScore: 82, style: 'eco',        name: 'Eco Ride' },
+        { distance: 5.8, duration: 900,  ecoScore: 65, style: 'normal',     name: 'Normal Ride' },
+        { distance: 2.1, duration: 420,  ecoScore: 42, style: 'aggressive', name: 'Aggressive Ride' },
+        { distance: 4.5, duration: 720,  ecoScore: 55, style: 'normal',     name: 'Mixed Ride' },
+        { distance: 6.3, duration: 1080, ecoScore: 88, style: 'eco',        name: 'Very Eco Ride' },
+        { distance: 3.8, duration: 540,  ecoScore: 35, style: 'aggressive', name: 'City Rush' },
+        { distance: 2.5, duration: 480,  ecoScore: 48, style: 'normal',     name: 'Moderate Ride' },
       ];
 
       const profile = DEMO_PROFILES[Math.floor(Math.random() * DEMO_PROFILES.length)];
-
-      // speedAvg is already distance/time derived from profile constants —
-      // verify it's consistent: profile.distance / (profile.duration / 3600)
       const derivedSpeed = parseFloat((profile.distance / (profile.duration / 3600)).toFixed(1));
 
       const simulatedReadings = [];
       const readingsCount = Math.ceil(profile.duration / 5);
-
       for (let i = 0; i < readingsCount; i++) {
         let throttle, speed, accel;
         if (profile.style === 'eco') {
@@ -295,70 +350,48 @@ export default function RiderDashboard({ riderName }) {
         });
       }
 
-      const tripId   = `trip-${Date.now()}`;
-      const tripRef  = ref(db, `riders/${riderId}/trips/${tripId}`);
       const tripStats    = calculateTripStats(simulatedReadings);
       const tripEcoScore = tripStats.avg;
       const worstAxis    = tripStats.worstAxis;
-
       const consumptionRate    = BATTERY_SPECS.consumption[profile.style];
       const batteryUsedWh      = profile.distance * consumptionRate;
       const batteryUsedPercent = (batteryUsedWh / BATTERY_SPECS.capacity) * 100;
-      const newBattery         = Math.max(5, battery - batteryUsedPercent);
+      const newBattery         = Math.max(0, battery - batteryUsedPercent);
 
       const tripDataObj = {
         timestamp: new Date().toISOString(),
         distanceKm: parseFloat(profile.distance.toFixed(2)),
-        avgSpeedKmh: derivedSpeed,  // FIXED: consistent distance/time value
-        score: tripEcoScore,
+        avgSpeedKmh: derivedSpeed, score: tripEcoScore,
         readingCount: simulatedReadings.length,
         durationSeconds: profile.duration,
         startLat: 18.5204 + (Math.random() - 0.5) * 0.05,
         startLon: 73.8567 + (Math.random() - 0.5) * 0.05,
-        worstAxis,
-        rideStyle: profile.style,
+        worstAxis, rideStyle: profile.style,
         consumptionWh: consumptionRate,
         batteryUsedPercent: parseFloat(batteryUsedPercent.toFixed(1)),
         batteryRemaining: parseFloat(newBattery.toFixed(1)),
         isSimulated: true,
       };
 
-      await set(tripRef, tripDataObj);
-
+      await set(ref(db, `riders/${riderId}/trips/${tripDataObj.timestamp}`), tripDataObj);
       setBattery(newBattery);
       batteryRef.current = newBattery;
 
       addCompletedTrip({
-        riderName,
-        distance:    tripDataObj.distanceKm,
-        duration:    tripDataObj.durationSeconds,
-        ecoScore:    tripDataObj.score,
-        avgSpeed:    tripDataObj.avgSpeedKmh,
-        battery:     battery,
-        batteryUsed: tripDataObj.batteryUsedPercent,
-        worstAxis,
-        timestamp:   tripDataObj.timestamp,
+        riderName, distance: tripDataObj.distanceKm, duration: tripDataObj.durationSeconds,
+        ecoScore: tripDataObj.score, avgSpeed: tripDataObj.avgSpeedKmh,
+        battery, batteryUsed: tripDataObj.batteryUsedPercent, worstAxis,
+        timestamp: tripDataObj.timestamp,
       });
 
-      const tips = getCoachingTips(
-        tripEcoScore,
-        worstAxis,
-        derivedSpeed,
-        simulatedReadings.map(r => r.throttle),
-        profile.distance
-      );
+      const tips = getCoachingTips(tripEcoScore, worstAxis, derivedSpeed, simulatedReadings.map(r => r.throttle), profile.distance);
       setCoachingTips(tips);
 
       setTripData({
-        riderName,
-        distance:        tripDataObj.distanceKm,
-        duration:        tripDataObj.durationSeconds,
-        ecoScore:        tripEcoScore,
-        avgSpeed:        tripDataObj.avgSpeedKmh,
-        batteryUsed:     tripDataObj.batteryUsedPercent,
-        batteryRemaining:tripDataObj.batteryRemaining,
-        worstAxis,
-        timestamp:       tripDataObj.timestamp,
+        riderName, distance: tripDataObj.distanceKm, duration: tripDataObj.durationSeconds,
+        ecoScore: tripEcoScore, avgSpeed: tripDataObj.avgSpeedKmh,
+        batteryUsed: tripDataObj.batteryUsedPercent, batteryRemaining: tripDataObj.batteryRemaining,
+        worstAxis, timestamp: tripDataObj.timestamp,
       });
       setShowTripSummary(true);
       setError(null);
@@ -378,34 +411,92 @@ export default function RiderDashboard({ riderName }) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const getDrainLabel = () => {
+    if (!drainRate) return null;
+    if (drainRate > DRAIN_BASELINE_WH_KM * 1.3) return { label: 'High Drain', color: '#dc3545', icon: '🔴' };
+    if (drainRate > DRAIN_BASELINE_WH_KM * DRAIN_ALERT_RATIO) return { label: 'Elevated Drain', color: '#ff9800', icon: '🟡' };
+    return { label: 'Normal Drain', color: '#4CAF50', icon: '🟢' };
+  };
+
   const ecoScoreColor = getEcoScoreColor(ecoScore);
-  const avgSpeed = getAvgSpeed(); // live value for display
+  const avgSpeed      = getAvgSpeed();
+  const projRange     = isSharing ? getProjectedRange() : null;
+  const drainLabel    = getDrainLabel();
+  const batteryTheme  = getBatteryTheme();
 
   const ecoCardStyle = {
-    background: 'rgba(0, 0, 0, 0.30)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
-    borderRadius: '10px',
-    padding: '14px 16px',
-    marginBottom: '16px',
-  };
-  const ecoLabelStyle = {
-    fontSize: '14px', color: '#c8e6c9', fontWeight: '600',
-    display: 'flex', alignItems: 'center', gap: '4px',
-  };
-  const ecoBarTrackStyle = {
-    background: 'rgba(255, 255, 255, 0.22)', height: '10px',
-    borderRadius: '5px', overflow: 'hidden', marginBottom: '6px',
-  };
-  const ecoBarFillStyle = {
-    background: ecoScoreColor.color, width: `${ecoScore}%`, height: '100%',
-    borderRadius: '5px', transition: 'width 0.4s ease, background 0.3s ease',
-  };
-  const ecoStatusLabelStyle = {
-    margin: '6px 0 0', fontSize: '13px', color: '#e0e0e0', fontWeight: '500',
+    background: 'rgba(0,0,0,0.30)', border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: '10px', padding: '14px 16px', marginBottom: '16px',
   };
 
   return (
     <div className={`rider-dashboard ${batteryTheme}`}>
+
+      {/* ── Toast stack ──────────────────────────────────────────────────── */}
+      <div className="toast-stack">
+        {toasts.map((t) => (
+          <div key={t.id} className={`toast toast-${t.type}`}>
+            <span>{t.msg}</span>
+            <button onClick={() => removeToast(t.id)} className="toast-close">✕</button>
+          </div>
+        ))}
+      </div>
+
+      {/* ── 0% Block Modal ───────────────────────────────────────────────── */}
+      {startBlockModal && (
+        <div className="battery-modal-overlay" onClick={() => setStartBlockModal(false)}>
+          <div className="battery-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="battery-modal-icon">🪫</div>
+            <h2>Battery Dead</h2>
+            <p>Battery is at 0%. The scooter cannot start.</p>
+            <p className="battery-modal-sub">Charge your Ather Rizta Z before riding.</p>
+            {stations.length > 0 && (
+              <p className="battery-modal-sub">Nearest station: <strong>{stations[0].name}</strong> ({stations[0].distanceKm} km away)</p>
+            )}
+            <button className="battery-modal-btn" onClick={() => setStartBlockModal(false)}>OK</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Critical Battery Modal (10%) ─────────────────────────────────── */}
+      {criticalModal && (
+        <div className="battery-modal-overlay" onClick={() => setCriticalModal(false)}>
+          <div className="battery-modal battery-modal-critical" onClick={(e) => e.stopPropagation()}>
+            <div className="battery-modal-icon">🔋</div>
+            <h2>Critical Battery — {battery}%</h2>
+            <p>Estimated range: <strong>~{projRange || Math.round((battery / 100) * 160)} km</strong></p>
+            <p className="battery-modal-sub">Find a charging station immediately or head home.</p>
+            {stationsLoading && <p className="battery-modal-sub">⏳ Finding nearby stations...</p>}
+            {stations.length > 0 && (
+              <div className="battery-modal-stations">
+                {stations.slice(0, 3).map((s) => (
+                  <a
+                    key={s.id}
+                    href={location ? buildMapsUrl(location.latitude, location.longitude, s.lat, s.lon) : `https://www.google.com/maps?q=${s.lat},${s.lon}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="battery-modal-station-link"
+                  >
+                    🔌 {s.name} — {s.distanceKm} km →
+                  </a>
+                ))}
+              </div>
+            )}
+            <div className="battery-modal-actions">
+              <button className="battery-modal-btn battery-modal-btn-secondary" onClick={() => setCriticalModal(false)}>
+                Dismiss
+              </button>
+              {battery > BATTERY_BLOCK && (
+                <button className="battery-modal-btn" onClick={() => { setCriticalModal(false); handleStartSharing(); }}>
+                  Ride Anyway
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tabs ─────────────────────────────────────────────────────────── */}
       <div className="dashboard-tabs">
         <button className={`tab-btn ${activeTab === 'dashboard'   ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>🚴 Dashboard</button>
         <button className={`tab-btn ${activeTab === 'leaderboard' ? 'active' : ''}`} onClick={() => setActiveTab('leaderboard')}>🏆 Leaderboard</button>
@@ -417,6 +508,7 @@ export default function RiderDashboard({ riderName }) {
           <h1>🚴 Rider Dashboard</h1>
           <p className="rider-name-badge">{riderName}</p>
 
+          {/* ── Battery Section ─────────────────────────────────────────── */}
           <div className="battery-section">
             <p><strong>🔋 Battery Status</strong></p>
             <div className="battery-gauge">
@@ -436,13 +528,23 @@ export default function RiderDashboard({ riderName }) {
                 </div>
               </div>
               <div className="battery-info">
-                <div className="battery-stat"><strong>Range:</strong> ~{Math.round((battery / 100) * 160)} km</div>
-                <div className={`battery-stat ${battery < 20 ? 'warning' : ''}`}>
-                  {battery >= 50 && '✓ Good condition - Continue riding'}
-                  {battery >= 20 && battery < 50 && '⚠ Medium level - Find charger soon'}
-                  {battery < 20 && '🔴 Critical - Charge immediately!'}
+                {battery <= BATTERY_BLOCK ? (
+                  <div className="battery-stat warning">🪫 Battery dead — charge before riding</div>
+                ) : battery <= BATTERY_CRITICAL ? (
+                  <div className="battery-stat warning">🚨 Critical — stop and charge now!</div>
+                ) : battery <= BATTERY_LOW ? (
+                  <div className="battery-stat warning">⚠️ Low battery — find a charger soon</div>
+                ) : battery >= 50 ? (
+                  <div className="battery-stat">✓ Good condition — continue riding</div>
+                ) : (
+                  <div className="battery-stat">⚠️ Medium — plan a charge stop</div>
+                )}
+                <div className="battery-stat">
+                  <strong>Est. Range:</strong> ~{Math.round((battery / 100) * 160)} km
                 </div>
-                <div className="battery-stat"><strong>Estimated Time:</strong> {Math.round((battery / 100) * 180)} min</div>
+                <div className="battery-stat">
+                  <strong>Est. Time:</strong> {Math.round((battery / 100) * 180)} min
+                </div>
               </div>
             </div>
             <div className="battery-bar">
@@ -454,6 +556,7 @@ export default function RiderDashboard({ riderName }) {
             />
           </div>
 
+          {/* ── Trip Timer ──────────────────────────────────────────────── */}
           {tripStarted && (
             <div className="trip-timer">
               <p className="timer-label">⏱️ Trip Duration</p>
@@ -461,19 +564,25 @@ export default function RiderDashboard({ riderName }) {
             </div>
           )}
 
+          {/* ── Buttons ─────────────────────────────────────────────────── */}
           <div className="button-group">
-            <button onClick={handleStartSharing}  disabled={isSharing}                  className="btn btn-start">
-              {isSharing ? '✓ Sharing...' : '▶️ Start Sharing'}
+            <button
+              onClick={handleStartSharing}
+              disabled={isSharing}
+              className="btn btn-start"
+              title={battery <= BATTERY_BLOCK ? 'Battery dead — cannot start' : ''}
+            >
+              {isSharing ? '✓ Sharing...' : battery <= BATTERY_BLOCK ? '🪫 No Battery' : '▶️ Start Sharing'}
             </button>
-            <button onClick={handleStopSharing}   disabled={!isSharing}                 className="btn btn-stop">⏹️ Stop Sharing</button>
-            <button onClick={handleSimulateTrip}  disabled={isSharing || isSimulating}  className="btn btn-simulate"
-              title="Generate realistic demo trip data">
+            <button onClick={handleStopSharing}  disabled={!isSharing}               className="btn btn-stop">⏹️ Stop Sharing</button>
+            <button onClick={handleSimulateTrip} disabled={isSharing || isSimulating} className="btn btn-simulate">
               {isSimulating ? '⏳ Simulating...' : '🎬 Simulate Trip'}
             </button>
           </div>
 
           <button className="btn btn-sos" onClick={() => setSOSModalOpen(true)}>🆘 SOS Emergency</button>
 
+          {/* ── Location ────────────────────────────────────────────────── */}
           {location && (
             <div className="location-display">
               <p>📍 Lat: {location.latitude.toFixed(4)}</p>
@@ -484,27 +593,84 @@ export default function RiderDashboard({ riderName }) {
 
           {error && <div className="error-box"><p>⚠️ {error}</p></div>}
 
+          {/* ── Live Stats ──────────────────────────────────────────────── */}
           {isSharing && (
             <div className="live-stats">
               <h3>📊 Live Trip Stats</h3>
+
+              {/* Eco Score */}
               <div style={ecoCardStyle}>
                 <div className="eco-score-header">
-                  <span style={ecoLabelStyle}>🌿 Eco-Score</span>
-                  <span className="eco-score-value" style={{ color: ecoScoreColor.color }}>
-                    {Math.round(ecoScore)}/100
-                  </span>
+                  <span style={{ fontSize: '14px', color: '#c8e6c9', fontWeight: '600' }}>🌿 Eco-Score</span>
+                  <span className="eco-score-value" style={{ color: ecoScoreColor.color }}>{Math.round(ecoScore)}/100</span>
                 </div>
-                <div style={ecoBarTrackStyle}>
-                  <div style={ecoBarFillStyle} />
+                <div style={{ background: 'rgba(255,255,255,0.22)', height: '10px', borderRadius: '5px', overflow: 'hidden', marginBottom: '6px' }}>
+                  <div style={{ background: ecoScoreColor.color, width: `${ecoScore}%`, height: '100%', borderRadius: '5px', transition: 'width 0.4s ease' }} />
                 </div>
-                <p style={ecoStatusLabelStyle}>{ecoScoreColor.label}</p>
+                <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#e0e0e0' }}>{ecoScoreColor.label}</p>
               </div>
+
               <p>📏 Distance: <strong>{tripDistance.toFixed(2)} km</strong></p>
-              {/* FIXED: shows real distance/time avg speed */}
               <p>⚡ Avg Speed: <strong>{avgSpeed.toFixed(1)} km/h</strong></p>
+
+              {/* Range Countdown */}
+              <div className={`range-ticker ${parseFloat(projRange) < 5 ? 'range-ticker-critical' : parseFloat(projRange) < 15 ? 'range-ticker-low' : ''}`}>
+                <span className="range-ticker-label">📍 Projected Range Remaining</span>
+                <span className="range-ticker-value">{projRange} km</span>
+                {parseFloat(projRange) < 5 && <span className="range-ticker-warn">⚠️ Find a charger NOW</span>}
+                {parseFloat(projRange) >= 5 && parseFloat(projRange) < 15 && <span className="range-ticker-warn">🔋 Low range — plan ahead</span>}
+              </div>
+
+              {/* Drain Rate */}
+              {drainLabel && (
+                <div className="drain-rate-row">
+                  <span>{drainLabel.icon} Drain Rate: <strong style={{ color: drainLabel.color }}>{drainLabel.label}</strong></span>
+                  <span style={{ fontSize: '12px', color: '#999' }}>{drainRate} Wh/km (baseline {DRAIN_BASELINE_WH_KM})</span>
+                </div>
+              )}
             </div>
           )}
 
+          {/* ── Charging Stations List ───────────────────────────────────── */}
+          {(stations.length > 0 || stationsLoading) && (
+            <div className="charging-stations-card">
+              <div className="charging-stations-header" onClick={() => setShowStations((p) => !p)}>
+                <span>🔌 Nearby Charging Stations {stations.length > 0 ? `(${stations.length})` : ''}</span>
+                <span>{showStations ? '▲' : '▼'}</span>
+              </div>
+              {stationsLoading && <p className="charging-loading">⏳ Fetching nearby stations...</p>}
+              {showStations && !stationsLoading && (
+                <div className="charging-stations-list">
+                  {stations.length === 0 ? (
+                    <p className="charging-empty">No charging stations found within 3 km.</p>
+                  ) : (
+                    stations.map((s) => (
+                      <div key={s.id} className="charging-station-row">
+                        <div className="charging-station-info">
+                          <span className="charging-station-name">{s.name}</span>
+                          {s.operator && <span className="charging-station-sub">{s.operator}</span>}
+                          <span className="charging-station-dist">📍 {s.distanceKm} km away</span>
+                        </div>
+                        <a
+                          href={location
+                            ? buildMapsUrl(location.latitude, location.longitude, s.lat, s.lon)
+                            : `https://www.google.com/maps?q=${s.lat},${s.lon}`
+                          }
+                          target="_blank"
+                          rel="noreferrer"
+                          className="charging-maps-btn"
+                        >
+                          🗺️ Open Maps
+                        </a>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Status Box ──────────────────────────────────────────────── */}
           <div className="status-box">
             {isSharing ? (
               <>
@@ -523,11 +689,7 @@ export default function RiderDashboard({ riderName }) {
           )}
 
           {showTripSummary && tripData && (
-            <TripSummaryModal
-              tripData={tripData}
-              riderId={riderId}
-              onClose={() => setShowTripSummary(false)}
-            />
+            <TripSummaryModal tripData={tripData} riderId={riderId} onClose={() => setShowTripSummary(false)} />
           )}
         </>
       ) : activeTab === 'leaderboard' ? (
@@ -536,11 +698,8 @@ export default function RiderDashboard({ riderName }) {
         <EnvironmentalImpactHub
           tripHistory={tripHistory}
           currentTrip={{
-            distance:   tripDistance,
-            duration:   tripDuration,
-            ecoScore:   Math.round(ecoScore),
-            avgSpeed:   avgSpeed,  // FIXED: real value
-            batteryUsed: 100 - battery,
+            distance: tripDistance, duration: tripDuration,
+            ecoScore: Math.round(ecoScore), avgSpeed, batteryUsed: 100 - battery,
           }}
         />
       )}
