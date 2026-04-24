@@ -14,6 +14,7 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
   const [showBadges, setShowBadges] = useState(false);
   const [showCoachingTips, setShowCoachingTips] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState(null);
+  const [tripLimit, setTripLimit] = useState(5);
 
   // ── Aggregate stats ──────────────────────────────────────────────────────
   const totalDistance = tripHistory.reduce((sum, t) => sum + (t.distanceKm || t.distance || 0), 0);
@@ -234,34 +235,66 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
               {showBadges ? 'Hide' : 'View All'}
             </button>
           </div>
+
+          {/* Unlocked badges — always visible */}
           {unlockedBadges.length > 0 ? (
-            <div className="badge-grid">
-              {unlockedBadges.map(b => (
-                <div key={b.id} className="badge-unlocked">
-                  <div style={{ fontSize:'22px', marginBottom:'4px' }}>🏅</div>
-                  <div style={{ fontSize:'12px' }}>{b.label}</div>
-                  <div style={{ fontSize:'10px', fontWeight:'normal', marginTop:'2px', opacity:0.8 }}>{b.desc}</div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p style={{ color:'#666', fontSize:'13px', margin:0 }}>Complete trips to unlock badges.</p>
-          )}
-          {nextUnlockedBadge && !nextBadge?.maxReached && (
-            <div style={{ marginTop:'14px', padding:'14px', background:'#333', border:'1px solid #404040', borderRadius:'8px' }}>
-              <p style={{ margin:'0 0 6px', fontSize:'12px', fontWeight:'600', color:'#4CAF50' }}>
-                🎯 Next: {nextUnlockedBadge.label} — {nextBadge?.remaining.toFixed(2)} kg CO₂ to go
-              </p>
-              <div style={{ background:'#404040', borderRadius:'4px', height:'8px', overflow:'hidden' }}>
-                <div style={{
-                  background: 'linear-gradient(90deg,#4CAF50,#66BB6A)',
-                  height: '100%',
-                  width: `${Math.max(0, 100 - (nextBadge?.remaining / nextUnlockedBadge.co2) * 100)}%`,
-                  transition: 'width 0.3s',
-                }} />
+            <>
+              <p style={{ color:'#888', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.5px', margin:'0 0 10px' }}>Unlocked</p>
+              <div className="badge-grid">
+                {unlockedBadges.map(b => (
+                  <div key={b.id} className="badge-unlocked">
+                    <div style={{ fontSize:'22px', marginBottom:'4px' }}>🏅</div>
+                    <div style={{ fontSize:'12px' }}>{b.label}</div>
+                    <div style={{ fontSize:'10px', fontWeight:'normal', marginTop:'2px', opacity:0.8 }}>{b.desc}</div>
+                  </div>
+                ))}
               </div>
-            </div>
+            </>
+          ) : (
+            <p style={{ color:'#666', fontSize:'13px', margin:'0 0 4px' }}>No badges unlocked yet. Start riding!</p>
           )}
+
+          {/* Locked badges — only visible when showBadges is true */}
+          {showBadges && (() => {
+            const lockedBadges = badges.filter(b => !b.unlocked);
+            if (lockedBadges.length === 0) return null;
+            return (
+              <div style={{ marginTop:'16px' }}>
+                <p style={{ color:'#888', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.5px', margin:'0 0 10px' }}>Locked — Progress</p>
+                <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+                  {lockedBadges.map(b => {
+                    // progress % toward this badge's CO₂ threshold
+                    const pct = Math.min(99, Math.max(0, b.progress ?? 0));
+                    return (
+                      <div key={b.id} style={{ background:'#333', border:'1px solid #444', borderRadius:'8px', padding:'12px' }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
+                          <div>
+                            <span style={{ fontSize:'13px', fontWeight:'600', color:'#aaa' }}>🔒 {b.label}</span>
+                            <span style={{ marginLeft:'8px', fontSize:'11px', color:'#666' }}>{b.desc}</span>
+                          </div>
+                          <span style={{ fontSize:'12px', color:'#4CAF50', fontWeight:'600', whiteSpace:'nowrap', marginLeft:'12px' }}>
+                            {pct}%
+                          </span>
+                        </div>
+                        <div style={{ background:'#404040', borderRadius:'4px', height:'6px', overflow:'hidden' }}>
+                          <div style={{
+                            background: 'linear-gradient(90deg,#4CAF50,#66BB6A)',
+                            height: '100%',
+                            width: `${pct}%`,
+                            transition: 'width 0.3s',
+                          }} />
+                        </div>
+                        <p style={{ margin:'5px 0 0', fontSize:'11px', color:'#666' }}>
+                          Target: {b.co2} kg CO₂ — {(b.co2 - (savedCO2 * (pct / 100))).toFixed(2)} kg remaining
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           {nextBadge?.maxReached && (
             <div style={{ marginTop:'14px', padding:'14px', background:'linear-gradient(135deg,#ffc107,#ffb300)', borderRadius:'8px', textAlign:'center' }}>
               <p style={{ margin:0, fontSize:'13px', fontWeight:'600', color:'#1a1a1a' }}>🎉 All Badges Unlocked! Carbon Champion!</p>
@@ -300,7 +333,7 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
         {/* ── Tabs ────────────────────────────────────────────────────────── */}
         <div className="tabs">
           <button className={`tab ${viewMode === 'overview'   ? 'active' : ''}`} onClick={() => setViewMode('overview')}>📊 Overview</button>
-          <button className={`tab ${viewMode === 'detailed'   ? 'active' : ''}`} onClick={() => setViewMode('detailed')}>📈 Trip Details</button>
+          <button className={`tab ${viewMode === 'detailed'   ? 'active' : ''}`} onClick={() => { setViewMode('detailed'); setTripLimit(5); }}>📈 Trip Details</button>
           <button className={`tab ${viewMode === 'leaderboard'? 'active' : ''}`} onClick={() => setViewMode('leaderboard')}>🏅 Leaderboard</button>
         </div>
 
@@ -415,7 +448,7 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
               <p className="no-data">No trips recorded yet.</p>
             ) : (
               <div style={{ maxHeight:'500px', overflowY:'auto' }}>
-                {tripHistory.slice().reverse().map((trip, idx) => {
+                {tripHistory.slice().reverse().slice(0, tripLimit).map((trip, idx) => {
                   const s        = trip.score || trip.ecoScore || 0;
                   const dist     = (trip.distanceKm || trip.distance || 0);
                   const dur      = trip.duration || trip.durationSeconds || 0;
@@ -498,6 +531,21 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {/* Load more / show less controls */}
+            {totalTrips > 5 && (
+              <div style={{ display:'flex', gap:'10px', marginTop:'14px' }}>
+                {tripLimit < totalTrips && (
+                  <button className="btn-secondary" onClick={() => setTripLimit(prev => prev + 5)}>
+                    Load 5 More ({totalTrips - tripLimit} remaining)
+                  </button>
+                )}
+                {tripLimit > 5 && (
+                  <button className="btn-small" onClick={() => setTripLimit(5)}>
+                    Show Less
+                  </button>
+                )}
               </div>
             )}
           </div>
