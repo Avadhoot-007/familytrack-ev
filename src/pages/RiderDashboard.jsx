@@ -64,9 +64,13 @@ export default function RiderDashboard({ riderName }) {
   const lowToastShownRef      = useRef(false);
   const criticalToastShownRef = useRef(false);
 
-  const tripHistory       = useStore((s) => s.tripHistory);
-  const addCompletedTrip  = useStore((s) => s.addCompletedTrip);
-  const setCoachingTips   = useStore((s) => s.setCoachingTips);
+  // FIX: track whether the critical modal was already shown for current battery level
+  // so the battery useEffect doesn't re-open it after "Ride Anyway" closes it
+  const criticalModalShownForBatteryRef = useRef(false);
+
+  const tripHistory         = useStore((s) => s.tripHistory);
+  const addCompletedTrip    = useStore((s) => s.addCompletedTrip);
+  const setCoachingTips     = useStore((s) => s.setCoachingTips);
   const currentCoachingTips = useStore((s) => s.currentCoachingTips);
 
   useEffect(() => { batteryRef.current = battery; }, [battery]);
@@ -84,6 +88,9 @@ export default function RiderDashboard({ riderName }) {
 
   const removeToast = (id) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
+  // ── Battery level watcher — only fires DURING an active trip ─────────────
+  // FIX: added `isSharing` guard so this never fires on the initial start flow.
+  // FIX: `criticalModalShownForBatteryRef` prevents re-opening after "Ride Anyway".
   useEffect(() => {
     if (!isSharing) return;
 
@@ -96,7 +103,11 @@ export default function RiderDashboard({ riderName }) {
     if (battery <= BATTERY_CRITICAL && !criticalToastShownRef.current) {
       criticalToastShownRef.current = true;
       addToast(`🚨 Critical battery (${battery}%)! Stop and charge immediately.`, 'critical', 0);
-      setCriticalModal(true);
+      // Only open the modal if it hasn't already been acknowledged for this battery level
+      if (!criticalModalShownForBatteryRef.current) {
+        criticalModalShownForBatteryRef.current = true;
+        setCriticalModal(true);
+      }
       if (location) fetchNearbyStations(location.latitude, location.longitude);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -226,6 +237,7 @@ export default function RiderDashboard({ riderName }) {
     return () => { navigator.geolocation.clearWatch(id); watchIdRef.current = null; };
   }, [isSharing, riderName, riderId]);
 
+  // ── Core start logic — no modals, no guards ───────────────────────────────
   const _doStartSharing = () => {
     setIsSharing(true);
     setTripStarted(true);
@@ -238,19 +250,31 @@ export default function RiderDashboard({ riderName }) {
     setDrainAlert(false);
     lowToastShownRef.current = false;
     criticalToastShownRef.current = false;
+    // FIX: mark critical modal as already handled so the battery useEffect
+    // doesn't re-open it the moment isSharing becomes true
+    criticalModalShownForBatteryRef.current = true;
     stationsFetchedRef.current = false;
     startBatteryRef.current = battery;
     tripStartTimeRef.current = Date.now();
     lastLocationRef.current = null;
   };
 
+  // ── Start button handler ──────────────────────────────────────────────────
   const handleStartSharing = () => {
-    if (battery <= BATTERY_BLOCK) { setStartBlockModal(true); return; }
-    if (battery <= BATTERY_CRITICAL) { setCriticalModal(true); return; }
+    if (battery <= BATTERY_BLOCK) {
+      setStartBlockModal(true);
+      return;
+    }
+    if (battery <= BATTERY_CRITICAL) {
+      // FIX: reset the ref so the modal shows fresh, but don't let the
+      // useEffect re-open it once the user dismisses or clicks Ride Anyway
+      criticalModalShownForBatteryRef.current = false;
+      setCriticalModal(true);
+      return;
+    }
     _doStartSharing();
   };
 
-  // ── FIXED: handleStopSharing ──────────────────────────────────────────────
   const handleStopSharing = async () => {
     if (!isSharing) return;
     setIsSharing(false);
@@ -271,7 +295,7 @@ export default function RiderDashboard({ riderName }) {
       const batteryRemaining   = batteryRef.current - batteryUsedPercent;
 
       const tripDataObj = {
-        riderName,                                                    // FIX: embed name
+        riderName,
         timestamp: new Date().toISOString(),
         distanceKm: parseFloat(tripDistance.toFixed(2)),
         avgSpeedKmh: finalAvgSpeed,
@@ -286,11 +310,9 @@ export default function RiderDashboard({ riderName }) {
         batteryRemaining: Math.max(0, parseFloat(batteryRemaining.toFixed(1))),
       };
 
-      // FIX: write profile so leaderboard resolves name even without location node
       await set(ref(db, `riders/${riderId}/profile`), { name: riderName });
       await set(ref(db, `riders/${riderId}/trips/${tripId}`), tripDataObj);
 
-      // FIX: unified field names matching Firebase shape
       addCompletedTrip({
         riderName,
         distanceKm:        tripDataObj.distanceKm,
@@ -321,7 +343,6 @@ export default function RiderDashboard({ riderName }) {
     }
   };
 
-  // ── FIXED: handleSimulateTrip ─────────────────────────────────────────────
   const handleSimulateTrip = async () => {
     if (battery <= BATTERY_BLOCK) { setStartBlockModal(true); return; }
 
@@ -373,7 +394,7 @@ export default function RiderDashboard({ riderName }) {
       const newBattery         = Math.max(0, battery - batteryUsedPercent);
 
       const tripDataObj = {
-        riderName,                                                    // FIX: embed name
+        riderName,
         timestamp: new Date().toISOString(),
         distanceKm: parseFloat(profile.distance.toFixed(2)),
         avgSpeedKmh: derivedSpeed, score: tripEcoScore,
@@ -388,14 +409,12 @@ export default function RiderDashboard({ riderName }) {
         isSimulated: true,
       };
 
-      // FIX: write profile node so leaderboard resolves name without location
       await set(ref(db, `riders/${riderId}/profile`), { name: riderName });
       await set(ref(db, `riders/${riderId}/trips/${tripDataObj.timestamp}`), tripDataObj);
 
       setBattery(newBattery);
       batteryRef.current = newBattery;
 
-      // FIX: unified field names matching Firebase shape
       addCompletedTrip({
         riderName,
         distanceKm:        tripDataObj.distanceKm,
@@ -437,7 +456,7 @@ export default function RiderDashboard({ riderName }) {
 
   const getDrainLabel = () => {
     if (!drainRate) return null;
-    if (drainRate > DRAIN_BASELINE_WH_KM * 1.3) return { label: 'High Drain', color: '#dc3545', icon: '🔴' };
+    if (drainRate > DRAIN_BASELINE_WH_KM * 1.3)            return { label: 'High Drain',     color: '#dc3545', icon: '🔴' };
     if (drainRate > DRAIN_BASELINE_WH_KM * DRAIN_ALERT_RATIO) return { label: 'Elevated Drain', color: '#ff9800', icon: '🟡' };
     return { label: 'Normal Drain', color: '#4CAF50', icon: '🟢' };
   };
@@ -533,6 +552,7 @@ export default function RiderDashboard({ riderName }) {
                 <button
                   className="battery-modal-btn"
                   onClick={() => {
+                    // FIX: close modal first, then start — single action, no re-trigger
                     setCriticalModal(false);
                     _doStartSharing();
                   }}
@@ -658,7 +678,7 @@ export default function RiderDashboard({ riderName }) {
               <div className={`range-ticker ${parseFloat(projRange) < 5 ? 'range-ticker-critical' : parseFloat(projRange) < 15 ? 'range-ticker-low' : ''}`}>
                 <span className="range-ticker-label">📍 Projected Range Remaining</span>
                 <span className="range-ticker-value">{projRange} km</span>
-                {parseFloat(projRange) < 5 && <span className="range-ticker-warn">⚠️ Find a charger NOW</span>}
+                {parseFloat(projRange) < 5  && <span className="range-ticker-warn">⚠️ Find a charger NOW</span>}
                 {parseFloat(projRange) >= 5 && parseFloat(projRange) < 15 && <span className="range-ticker-warn">🔋 Low range — plan ahead</span>}
               </div>
 
