@@ -20,13 +20,13 @@ const BATTERY_SPECS = {
 };
 
 // Battery thresholds
-const BATTERY_BLOCK    = 0;   // hard block start
-const BATTERY_CRITICAL = 10;  // modal + persistent toast
-const BATTERY_LOW      = 25;  // dismissible toast + fetch stations
+const BATTERY_BLOCK    = 0;
+const BATTERY_CRITICAL = 10;
+const BATTERY_LOW      = 25;
 
 // Drain rate baseline Wh/km (normal riding)
 const DRAIN_BASELINE_WH_KM = 37;
-const DRAIN_ALERT_RATIO    = 1.20; // 20% above baseline
+const DRAIN_ALERT_RATIO    = 1.20;
 
 export default function RiderDashboard({ riderName }) {
   const [isSharing, setIsSharing]               = useState(false);
@@ -45,9 +45,9 @@ export default function RiderDashboard({ riderName }) {
   const [isSimulating, setIsSimulating]         = useState(false);
 
   // Battery alert state
-  const [toasts, setToasts]                     = useState([]);      // [{id,msg,type}]
-  const [criticalModal, setCriticalModal]       = useState(false);   // 10% modal
-  const [startBlockModal, setStartBlockModal]   = useState(false);   // 0% block modal
+  const [toasts, setToasts]                     = useState([]);
+  const [criticalModal, setCriticalModal]       = useState(false);
+  const [startBlockModal, setStartBlockModal]   = useState(false);
 
   // Charging stations
   const [stations, setStations]                 = useState([]);
@@ -56,7 +56,7 @@ export default function RiderDashboard({ riderName }) {
   const stationsFetchedRef                      = useRef(false);
 
   // Drain rate
-  const [drainRate, setDrainRate]               = useState(null); // Wh/km live
+  const [drainRate, setDrainRate]               = useState(null);
   const [drainAlert, setDrainAlert]             = useState(false);
   const startBatteryRef                         = useRef(null);
 
@@ -102,7 +102,7 @@ export default function RiderDashboard({ riderName }) {
 
     if (battery <= BATTERY_CRITICAL && !criticalToastShownRef.current) {
       criticalToastShownRef.current = true;
-      addToast(`🚨 Critical battery (${battery}%)! Stop and charge immediately.`, 'critical', 0); // persistent
+      addToast(`🚨 Critical battery (${battery}%)! Stop and charge immediately.`, 'critical', 0);
       setCriticalModal(true);
       if (location) fetchNearbyStations(location.latitude, location.longitude);
     }
@@ -117,7 +117,7 @@ export default function RiderDashboard({ riderName }) {
     try {
       const results = await fetchChargingStations(lat, lon, 3);
       setStations(results);
-      if (results.length > 0) setShowStations(true);
+      setShowStations(true);
     } catch (e) {
       console.error('Station fetch error:', e);
     } finally {
@@ -125,15 +125,33 @@ export default function RiderDashboard({ riderName }) {
     }
   };
 
+  // ── Manual station fetch (no GPS needed — uses Pune default coords) ────────
+  const handleFindStations = async () => {
+    stationsFetchedRef.current = false; // allow re-fetch
+    const lat = location?.latitude  ?? 18.5204;
+    const lon = location?.longitude ?? 73.8567;
+    setStationsLoading(true);
+    setShowStations(true);
+    try {
+      const results = await fetchChargingStations(lat, lon, 3);
+      setStations(results);
+    } catch (e) {
+      console.error('Station fetch error:', e);
+    } finally {
+      setStationsLoading(false);
+      stationsFetchedRef.current = true;
+    }
+  };
+
   // ── Live drain rate calculation ────────────────────────────────────────────
   useEffect(() => {
-    if (!isSharing || tripDistance < 0.3) return; // need at least 300m for valid rate
+    if (!isSharing || tripDistance < 0.3) return;
 
     const batteryUsedPct = (startBatteryRef.current ?? battery) - battery;
     if (batteryUsedPct <= 0) return;
 
     const batteryUsedWh = (batteryUsedPct / 100) * BATTERY_SPECS.capacity;
-    const rate = batteryUsedWh / tripDistance; // Wh/km
+    const rate = batteryUsedWh / tripDistance;
     setDrainRate(parseFloat(rate.toFixed(1)));
 
     if (rate > DRAIN_BASELINE_WH_KM * DRAIN_ALERT_RATIO && !drainAlert) {
@@ -223,11 +241,8 @@ export default function RiderDashboard({ riderName }) {
     return () => { navigator.geolocation.clearWatch(id); watchIdRef.current = null; };
   }, [isSharing, riderName, riderId]);
 
-  // ── Start sharing ─────────────────────────────────────────────────────────
-  const handleStartSharing = () => {
-    if (battery <= BATTERY_BLOCK) { setStartBlockModal(true); return; }
-    if (battery <= BATTERY_CRITICAL) { setCriticalModal(true); return; }
-
+  // ── Internal start trip (bypasses battery guards — already checked) ────────
+  const _doStartSharing = () => {
     setIsSharing(true);
     setTripStarted(true);
     setEcoScore(0);
@@ -243,6 +258,13 @@ export default function RiderDashboard({ riderName }) {
     startBatteryRef.current = battery;
     tripStartTimeRef.current = Date.now();
     lastLocationRef.current = null;
+  };
+
+  // ── Start sharing (public — runs guards) ──────────────────────────────────
+  const handleStartSharing = () => {
+    if (battery <= BATTERY_BLOCK) { setStartBlockModal(true); return; }
+    if (battery <= BATTERY_CRITICAL) { setCriticalModal(true); return; }
+    _doStartSharing();
   };
 
   // ── Stop sharing ──────────────────────────────────────────────────────────
@@ -451,14 +473,16 @@ export default function RiderDashboard({ riderName }) {
             <p>Battery is at 0%. The scooter cannot start.</p>
             <p className="battery-modal-sub">Charge your Ather Rizta Z before riding.</p>
             {stations.length > 0 && (
-              <p className="battery-modal-sub">Nearest station: <strong>{stations[0].name}</strong> ({stations[0].distanceKm} km away)</p>
+              <p className="battery-modal-sub">Nearest: <strong>{stations[0].name}</strong> ({stations[0].distanceKm} km)</p>
             )}
-            <button className="battery-modal-btn" onClick={() => setStartBlockModal(false)}>OK</button>
+            <div className="battery-modal-actions">
+              <button className="battery-modal-btn battery-modal-btn-secondary" onClick={() => setStartBlockModal(false)}>OK</button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ── Critical Battery Modal (10%) ─────────────────────────────────── */}
+      {/* ── Critical Battery Modal (≤10%) ────────────────────────────────── */}
       {criticalModal && (
         <div className="battery-modal-overlay" onClick={() => setCriticalModal(false)}>
           <div className="battery-modal battery-modal-critical" onClick={(e) => e.stopPropagation()}>
@@ -466,13 +490,19 @@ export default function RiderDashboard({ riderName }) {
             <h2>Critical Battery — {battery}%</h2>
             <p>Estimated range: <strong>~{projRange || Math.round((battery / 100) * 160)} km</strong></p>
             <p className="battery-modal-sub">Find a charging station immediately or head home.</p>
-            {stationsLoading && <p className="battery-modal-sub">⏳ Finding nearby stations...</p>}
+
+            {stationsLoading && <p className="battery-modal-sub" style={{ color: '#ffa726' }}>⏳ Finding nearby stations...</p>}
+
             {stations.length > 0 && (
               <div className="battery-modal-stations">
                 {stations.slice(0, 3).map((s) => (
                   <a
                     key={s.id}
-                    href={location ? buildMapsUrl(location.latitude, location.longitude, s.lat, s.lon) : `https://www.google.com/maps?q=${s.lat},${s.lon}`}
+                    href={
+                      location
+                        ? buildMapsUrl(location.latitude, location.longitude, s.lat, s.lon)
+                        : `https://www.google.com/maps?q=${s.lat},${s.lon}`
+                    }
                     target="_blank"
                     rel="noreferrer"
                     className="battery-modal-station-link"
@@ -482,12 +512,34 @@ export default function RiderDashboard({ riderName }) {
                 ))}
               </div>
             )}
-            <div className="battery-modal-actions">
-              <button className="battery-modal-btn battery-modal-btn-secondary" onClick={() => setCriticalModal(false)}>
+
+            {/* FIX: show Find Stations button when no stations fetched yet */}
+            {!stationsLoading && stations.length === 0 && (
+              <button
+                className="battery-modal-btn battery-modal-btn-secondary"
+                style={{ marginTop: '12px', width: '100%' }}
+                onClick={(e) => { e.stopPropagation(); handleFindStations(); }}
+              >
+                🔍 Find Nearby Stations
+              </button>
+            )}
+
+            <div className="battery-modal-actions" style={{ marginTop: '16px' }}>
+              <button
+                className="battery-modal-btn battery-modal-btn-secondary"
+                onClick={() => setCriticalModal(false)}
+              >
                 Dismiss
               </button>
+              {/* FIX: "Ride Anyway" uses _doStartSharing to bypass the guard */}
               {battery > BATTERY_BLOCK && (
-                <button className="battery-modal-btn" onClick={() => { setCriticalModal(false); handleStartSharing(); }}>
+                <button
+                  className="battery-modal-btn"
+                  onClick={() => {
+                    setCriticalModal(false);
+                    _doStartSharing();
+                  }}
+                >
                   Ride Anyway
                 </button>
               )}
@@ -631,20 +683,46 @@ export default function RiderDashboard({ riderName }) {
             </div>
           )}
 
-          {/* ── Charging Stations List ───────────────────────────────────── */}
-          {(stations.length > 0 || stationsLoading) && (
-            <div className="charging-stations-card">
-              <div className="charging-stations-header" onClick={() => setShowStations((p) => !p)}>
-                <span>🔌 Nearby Charging Stations {stations.length > 0 ? `(${stations.length})` : ''}</span>
-                <span>{showStations ? '▲' : '▼'}</span>
-              </div>
-              {stationsLoading && <p className="charging-loading">⏳ Fetching nearby stations...</p>}
-              {showStations && !stationsLoading && (
-                <div className="charging-stations-list">
-                  {stations.length === 0 ? (
-                    <p className="charging-empty">No charging stations found within 3 km.</p>
-                  ) : (
-                    stations.map((s) => (
+          {/* ── Find Charging Stations (always visible, not just on low battery) ── */}
+          <div className="charging-stations-card">
+            <div
+              className="charging-stations-header"
+              onClick={() => {
+                if (!showStations) {
+                  setShowStations(true);
+                  if (stations.length === 0 && !stationsLoading) handleFindStations();
+                } else {
+                  setShowStations(false);
+                }
+              }}
+            >
+              <span>🔌 Nearby Charging Stations {stations.length > 0 ? `(${stations.length} found)` : ''}</span>
+              <span>{showStations ? '▲' : '▼'}</span>
+            </div>
+
+            {showStations && (
+              <>
+                {stationsLoading && <p className="charging-loading">⏳ Fetching nearby stations...</p>}
+
+                {!stationsLoading && stations.length === 0 && (
+                  <div style={{ padding: '12px 16px' }}>
+                    <p className="charging-empty">No stations found. Try refreshing.</p>
+                    <button
+                      onClick={handleFindStations}
+                      style={{
+                        marginTop: '8px', padding: '7px 14px',
+                        background: 'rgba(33,150,243,0.15)', border: '1px solid rgba(33,150,243,0.4)',
+                        borderRadius: '6px', color: '#64b5f6', cursor: 'pointer', fontSize: '13px',
+                      }}
+                    >
+                      🔄 Retry Search
+                    </button>
+                  </div>
+                )}
+
+                {!stationsLoading && stations.length > 0 && (
+                  <div className="charging-stations-list">
+                    {stations.map((s) => (
                       <div key={s.id} className="charging-station-row">
                         <div className="charging-station-info">
                           <span className="charging-station-name">{s.name}</span>
@@ -652,9 +730,10 @@ export default function RiderDashboard({ riderName }) {
                           <span className="charging-station-dist">📍 {s.distanceKm} km away</span>
                         </div>
                         <a
-                          href={location
-                            ? buildMapsUrl(location.latitude, location.longitude, s.lat, s.lon)
-                            : `https://www.google.com/maps?q=${s.lat},${s.lon}`
+                          href={
+                            location
+                              ? buildMapsUrl(location.latitude, location.longitude, s.lat, s.lon)
+                              : `https://www.google.com/maps?q=${s.lat},${s.lon}`
                           }
                           target="_blank"
                           rel="noreferrer"
@@ -663,12 +742,12 @@ export default function RiderDashboard({ riderName }) {
                           🗺️ Open Maps
                         </a>
                       </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
 
           {/* ── Status Box ──────────────────────────────────────────────── */}
           <div className="status-box">
