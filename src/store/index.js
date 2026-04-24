@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { persistTripToFirebase, loadTripsFromFirebase } from '../utils/tripFirebaseSync';
 
 const STORAGE_KEY = 'familytrack-ev-store';
 
@@ -35,19 +36,27 @@ export const useStore = create(
       alerts: [],
       addAlert: (alert) => set((state) => ({ alerts: [alert, ...state.alerts].slice(0, 50) })),
 
-      // Trip History — persisted via zustand persist middleware only.
-      // FIX: removed manual localStorage.setItem calls — single source of truth.
+      // Trip History
       tripHistory: [],
+
       addCompletedTrip: (trip) => set((state) => {
         const newTrip = {
           ...trip,
           id: trip.id || `trip-${Date.now()}`,
           timestamp: trip.timestamp || new Date().toISOString(),
         };
-        // Deduplicate by timestamp to prevent double-adds on re-renders
+        // Deduplicate by timestamp
         const exists = state.tripHistory.some(t => t.timestamp === newTrip.timestamp);
         if (exists) return {};
         const updated = [...state.tripHistory, newTrip].slice(-100);
+
+        // Fire-and-forget Firebase write
+        const riderId = state.riderName
+          ?.toLowerCase().replace(/\s+/g, '-') || null;
+        if (riderId) {
+          persistTripToFirebase(riderId, newTrip);
+        }
+
         return { tripHistory: updated };
       }),
 
@@ -78,17 +87,39 @@ export const useStore = create(
 );
 
 /**
- * Hydrate trip history from zustand persist (localStorage via 'familytrack-ev-store').
- * The persist middleware already rehydrates automatically on store creation,
- * so this function just waits for that to settle and signals readiness.
+ * Hydrate trip history.
+ * 1. Wait for Zustand persist rehydration (localStorage).
+ * 2. If localStorage has trips — done, Firebase is backup only.
+ * 3. If localStorage is empty — attempt Firebase load for this rider.
  */
 export const hydrateTripsFromStorage = async () => {
   return new Promise((resolve) => {
-    // Zustand persist rehydrates synchronously from localStorage on store init.
-    // Give it one tick to ensure the store state is populated before components read it.
-    setTimeout(() => {
-      const { tripHistory } = useStore.getState();
-      console.log(`✓ Store hydrated — ${tripHistory.length} trips available`);
+    setTimeout(async () => {
+      const state = useStore.getState();
+      const localCount = state.tripHistory.length;
+
+      if (localCount > 0) {
+        console.log(`✓ Store hydrated from localStorage — ${localCount} trips`);
+        resolve();
+        return;
+      }
+
+      // localStorage empty — try Firebase
+      const riderId = state.riderName
+        ?.toLowerCase().replace(/\s+/g, '-') || null;
+
+      if (riderId) {
+        const firebaseTrips = await loadTripsFromFirebase(riderId);
+        if (firebaseTrips.length > 0) {
+          useStore.getState().setTripHistory(firebaseTrips);
+          console.log(`✓ Store hydrated from Firebase — ${firebaseTrips.length} trips`);
+        } else {
+          console.log('✓ Store hydrated — no trips found');
+        }
+      } else {
+        console.log('✓ Store ready — no riderId yet');
+      }
+
       resolve();
     }, 0);
   });
