@@ -3,21 +3,29 @@
     "riders": {
       "$riderId": {
         ".read": true,
-        ".write": "$uid === $riderId",
+        ".write": "auth !== null",
         "location": {
           ".validate": "newData.hasChildren(['lat', 'lon', 'battery', 'timestamp'])"
         },
+        "profile": {
+          ".validate": "newData.hasChildren(['name'])"
+        },
         "trips": {
           "$tripId": {
-            ".validate": "newData.hasChildren(['timestamp', 'distanceKm', 'avgSpeedKmh', 'score'])"
+            ".validate": "newData.hasChildren(['timestamp', 'distanceKm', 'score'])"
+          }
+        },
+        "coachingTips": {
+          "$tipId": {
+            ".validate": "newData.hasChildren(['title', 'message', 'sentAt'])"
           }
         }
       }
     },
     "families": {
       "$familyId": {
-        ".read": "root.child('families').child($familyId).child('members').child($uid).exists()",
-        ".write": "root.child('families').child($familyId).child('members').child($uid).exists()"
+        ".read": "root.child('families').child($familyId).child('members').child(auth.uid).exists()",
+        ".write": "root.child('families').child($familyId).child('members').child(auth.uid).exists()"
       }
     }
   }
