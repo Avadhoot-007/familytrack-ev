@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { auth } from './config/firebase';
 import RiderDashboard from './pages/RiderDashboard';
 import WatcherDashboard from './pages/WatcherDashboardPage';
 import { hydrateTripsFromStorage } from './store';
@@ -8,20 +10,35 @@ export default function App() {
   const [riderName, setRiderName] = useState('');
   const [nameSet, setNameSet] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
 
-  // Hydrate trips once on app mount
+  // ── Anonymous auth + trip hydration on mount ───────────────────────────
   useEffect(() => {
+    // Sign in anonymously so Firebase rules ($uid === $riderId) can be satisfied.
+    // We derive riderId from riderName in RiderDashboard, but auth must be
+    // established first so writes aren't rejected outright.
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        try {
+          await signInAnonymously(auth);
+        } catch (e) {
+          console.error('Anonymous auth failed:', e);
+        }
+      }
+      setAuthReady(true);
+    });
+
     const init = async () => {
       await hydrateTripsFromStorage();
       setIsHydrated(true);
     };
     init();
+
+    return () => unsub();
   }, []);
 
   const handleSetName = () => {
-    if (riderName.trim()) {
-      setNameSet(true);
-    }
+    if (riderName.trim()) setNameSet(true);
   };
 
   if (!nameSet) {
@@ -36,18 +53,12 @@ export default function App() {
           gap: '12px', marginBottom: '12px',
         }}>
           <span style={{ fontSize: '36px', lineHeight: 1 }}>🚴</span>
-          <span style={{
-            fontSize: '28px', fontWeight: '600',
-            color: 'inherit', lineHeight: 1,
-          }}>
+          <span style={{ fontSize: '28px', fontWeight: '600', color: 'inherit', lineHeight: 1 }}>
             FamilyTrack EV
           </span>
         </div>
 
-        <p style={{
-          fontSize: '18px', fontWeight: '500', margin: '0 0 20px',
-          color: 'inherit',
-        }}>
+        <p style={{ fontSize: '18px', fontWeight: '500', margin: '0 0 20px', color: 'inherit' }}>
           Enter Your Name
         </p>
 
@@ -81,22 +92,22 @@ export default function App() {
     );
   }
 
-  // Show full loading screen while hydrating
-  if (!isHydrated) {
+  // Wait for both auth and trip hydration before rendering dashboards.
+  // This prevents any Firebase write from firing before uid is set,
+  // and ensures tripHistory is loaded into store before RiderDashboard mounts.
+  if (!isHydrated || !authReady) {
     return (
       <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh',
-        background: '#f5f5f5',
-        fontFamily: 'Arial',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        minHeight: '100vh', background: '#f5f5f5', fontFamily: 'Arial',
       }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '48px', marginBottom: '20px' }}>🚴</div>
           <h1>FamilyTrack EV</h1>
-          <p style={{ color: '#666' }}>Loading trip history...</p>
+          <p style={{ color: '#666' }}>
+            {!authReady ? 'Connecting...' : 'Loading trip history...'}
+          </p>
         </div>
       </div>
     );
@@ -139,19 +150,9 @@ export default function App() {
       </div>
 
       {/*
-        FIX: RiderDashboard is always mounted and never unmounted.
-        Switching to Watcher view only hides it visually via display:none.
-        This preserves all trip state (isSharing, GPS watcher, intervals,
-        Firebase sync) across tab switches — nothing gets cancelled.
-
-        RiderDashboard has no Leaflet map, so display:none is safe here.
-
-        WatcherDashboard still remounts fresh each time (key="watcher-map")
-        to guarantee a clean Leaflet map init with a visible container.
-
-        CRITICAL: App only renders content AFTER isHydrated=true.
-        This ensures tripHistory is loaded into store before RiderDashboard init.
-        Fixes: data not showing in Impact Hub on page reload.
+        RiderDashboard always mounted (display:none when watching) to preserve
+        GPS watcher, intervals, and Firebase sync across tab switches.
+        WatcherDashboard remounts fresh each time (key) for clean Leaflet init.
       */}
       <div style={{ display: view === 'rider' ? 'block' : 'none' }}>
         <RiderDashboard riderName={riderName} />
