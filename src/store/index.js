@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 const STORAGE_KEY = 'familytrack-ev-store';
-const TRIP_HISTORY_KEY = 'familytrack-trip-history';
 
 export const useStore = create(
   persist(
@@ -15,8 +14,8 @@ export const useStore = create(
       // Current trip
       isSharing: false,
       tripStartTime: null,
-      tripStats: { distanceKm: 0, avgSpeedKmh: 0, ecoScore: 0, worstAxis: null },
-      
+      tripStats: { distanceKm: 0, avgSpeedKmh: 0, score: 0, worstAxis: null },
+
       setSharing: (isSharing) => set({ isSharing, tripStartTime: isSharing ? Date.now() : null }),
       updateTripStats: (stats) => set({ tripStats: stats }),
 
@@ -36,31 +35,29 @@ export const useStore = create(
       alerts: [],
       addAlert: (alert) => set((state) => ({ alerts: [alert, ...state.alerts].slice(0, 50) })),
 
-      // Trip History (PERSISTED - survives page reload)
+      // Trip History — persisted via zustand persist middleware only.
+      // FIX: removed manual localStorage.setItem calls — single source of truth.
       tripHistory: [],
       addCompletedTrip: (trip) => set((state) => {
         const newTrip = {
           ...trip,
-          id: `trip-${Date.now()}`,
+          id: trip.id || `trip-${Date.now()}`,
           timestamp: trip.timestamp || new Date().toISOString(),
         };
+        // Deduplicate by timestamp to prevent double-adds on re-renders
+        const exists = state.tripHistory.some(t => t.timestamp === newTrip.timestamp);
+        if (exists) return {};
         const updated = [...state.tripHistory, newTrip].slice(-100);
-        // Also sync to localStorage directly for instant backup
-        localStorage.setItem(TRIP_HISTORY_KEY, JSON.stringify(updated));
         return { tripHistory: updated };
       }),
 
-      // Bulk load trips (used during Firebase hydration)
       setTripHistory: (trips) => set({ tripHistory: trips }),
 
-      // Clear specific trip
-      removeTrip: (tripId) => set((state) => {
-        const updated = state.tripHistory.filter(t => t.id !== tripId);
-        localStorage.setItem(TRIP_HISTORY_KEY, JSON.stringify(updated));
-        return { tripHistory: updated };
-      }),
+      removeTrip: (tripId) => set((state) => ({
+        tripHistory: state.tripHistory.filter(t => t.id !== tripId),
+      })),
 
-      // Coaching Tips Cache
+      // Coaching Tips
       currentCoachingTips: [],
       setCoachingTips: (tips) => set({ currentCoachingTips: tips }),
 
@@ -71,36 +68,30 @@ export const useStore = create(
     {
       name: STORAGE_KEY,
       partialize: (state) => ({
-        // Only persist these (not transient UI state)
         battery: state.battery,
         riderName: state.riderName,
         userId: state.userId,
-        tripHistory: state.tripHistory, // Persist trips via zustand too
+        tripHistory: state.tripHistory,
       }),
     }
   )
 );
 
 /**
- * Hydrate trip history from localStorage on app init
- * @returns {Promise<void>}
+ * Hydrate trip history from zustand persist (localStorage via 'familytrack-ev-store').
+ * The persist middleware already rehydrates automatically on store creation,
+ * so this function just waits for that to settle and signals readiness.
  */
 export const hydrateTripsFromStorage = async () => {
-  try {
-    const stored = localStorage.getItem(TRIP_HISTORY_KEY);
-    if (stored) {
-      const trips = JSON.parse(stored);
-      useStore.setState({ tripHistory: trips });
-      console.log(`✓ Loaded ${trips.length} trips from localStorage`);
-      return;
-    }
-  } catch (err) {
-    console.error('localStorage read error:', err);
-  }
-
-  // Fallback: Try Firebase only if localStorage empty (optional)
-  console.log('ℹ localStorage empty. Trips will be loaded from Firebase on next sync.');
-  // Firebase trips auto-sync when RiderDashboard queries them during the trip save flow
+  return new Promise((resolve) => {
+    // Zustand persist rehydrates synchronously from localStorage on store init.
+    // Give it one tick to ensure the store state is populated before components read it.
+    setTimeout(() => {
+      const { tripHistory } = useStore.getState();
+      console.log(`✓ Store hydrated — ${tripHistory.length} trips available`);
+      resolve();
+    }, 0);
+  });
 };
 
 // Expose to window for debugging
