@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   calculateCO2Savings,
   calculateTreeEquivalents,
@@ -9,12 +9,64 @@ import {
   downloadTripPDF,
 } from '../utils/ecoImpactCalculations';
 
+// ---------------------------------------------------------------------------
+// Badge unlock animation overlay
+// ---------------------------------------------------------------------------
+function BadgeUnlockOverlay({ badge, onDone }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 2800);
+    return () => clearTimeout(t);
+  }, [onDone]);
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.75)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 9999,
+      animation: 'badgeOverlayIn 0.3s ease',
+    }}>
+      <div style={{
+        textAlign: 'center',
+        animation: 'badgeBounceIn 0.5s cubic-bezier(0.34,1.56,0.64,1)',
+      }}>
+        <div style={{
+          fontSize: '80px', lineHeight: 1,
+          marginBottom: '16px',
+          animation: 'badgeSpin 0.6s ease 0.2s both',
+        }}>🏅</div>
+        <div style={{
+          background: 'linear-gradient(135deg,#ffc107,#ffb300)',
+          color: '#1a1a1a', borderRadius: '16px',
+          padding: '20px 32px',
+          boxShadow: '0 8px 40px rgba(255,193,7,0.5)',
+          animation: 'badgeGlow 1s ease infinite alternate',
+        }}>
+          <p style={{ margin: '0 0 6px', fontSize: '13px', fontWeight: '600', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '1px' }}>
+            Badge Unlocked!
+          </p>
+          <h2 style={{ margin: '0 0 6px', fontSize: '24px', fontWeight: '800' }}>{badge.label}</h2>
+          <p style={{ margin: 0, fontSize: '14px', opacity: 0.85 }}>{badge.desc}</p>
+        </div>
+        <p style={{ color: '#888', fontSize: '12px', marginTop: '16px' }}>Tap anywhere to continue</p>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRiders = [] }) => {
   const [viewMode, setViewMode] = useState('overview');
   const [showBadges, setShowBadges] = useState(false);
   const [showCoachingTips, setShowCoachingTips] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [tripLimit, setTripLimit] = useState(5);
+
+  // Badge animation state
+  const [newlyUnlocked, setNewlyUnlocked] = useState(null);   // badge to animate
+  const prevUnlockedIdsRef = useRef(null);                     // track previous set
 
   // ── Aggregate stats ──────────────────────────────────────────────────────
   const totalDistance = tripHistory.reduce((sum, t) => sum + (t.distanceKm || t.distance || 0), 0);
@@ -32,6 +84,28 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
   const treeEquiv   = calculateTreeEquivalents(savedCO2);
   const badges      = getEcoBadges(savedCO2);
   const nextBadge   = getNextBadgeTarget(savedCO2);
+
+  // ── Detect newly unlocked badges ─────────────────────────────────────────
+  useEffect(() => {
+    const currentUnlockedIds = new Set(badges.filter(b => b.unlocked).map(b => b.id));
+
+    if (prevUnlockedIdsRef.current === null) {
+      // First render — just record, no animation
+      prevUnlockedIdsRef.current = currentUnlockedIds;
+      return;
+    }
+
+    // Find any id in current that wasn't in previous
+    for (const id of currentUnlockedIds) {
+      if (!prevUnlockedIdsRef.current.has(id)) {
+        const badge = badges.find(b => b.id === id);
+        if (badge) setNewlyUnlocked(badge);
+        break; // animate one at a time
+      }
+    }
+
+    prevUnlockedIdsRef.current = currentUnlockedIds;
+  }, [savedCO2]); // re-check when CO2 changes (new trip added)
 
   // ── Coaching tips ────────────────────────────────────────────────────────
   let currentTips = [];
@@ -59,7 +133,7 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
   const unlockedBadges    = badges.filter(b => b.unlocked);
   const nextUnlockedBadge = badges.find(b => !b.unlocked);
 
-  // ── Leaderboard: aggregate from tripHistory by riderName ────────────────
+  // ── Leaderboard ──────────────────────────────────────────────────────────
   const riderMap = {};
   tripHistory.forEach(t => {
     const name = t.riderName || 'Unknown';
@@ -81,12 +155,46 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
     .map((r, i) => ({ ...r, rank: i + 1 }));
 
   const handleExportTrip = (trip) => downloadTripPDF(trip);
-
   const scoreColor = (s) => s >= 80 ? '#4CAF50' : s >= 60 ? '#ffc107' : '#dc3545';
 
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', background: '#1a1a1a', minHeight: '100vh', padding: '20px', color: '#e0e0e0' }}>
+
+      {/* ── Badge unlock overlay ─────────────────────────────────────────── */}
+      {newlyUnlocked && (
+        <BadgeUnlockOverlay
+          badge={newlyUnlocked}
+          onDone={() => setNewlyUnlocked(null)}
+        />
+      )}
+
       <style>{`
+        /* Badge animations */
+        @keyframes badgeOverlayIn {
+          from { opacity: 0; } to { opacity: 1; }
+        }
+        @keyframes badgeBounceIn {
+          from { opacity: 0; transform: scale(0.3); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        @keyframes badgeSpin {
+          from { transform: rotate(-20deg) scale(0.8); }
+          to   { transform: rotate(0deg) scale(1); }
+        }
+        @keyframes badgeGlow {
+          from { box-shadow: 0 8px 40px rgba(255,193,7,0.4); }
+          to   { box-shadow: 0 8px 60px rgba(255,193,7,0.8); }
+        }
+        /* Unlocked badge card pulse */
+        @keyframes badgeCardPulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(255,193,7,0); }
+          50%       { box-shadow: 0 0 0 8px rgba(255,193,7,0.25); }
+        }
+        .badge-new {
+          animation: badgeCardPulse 1.5s ease 3;
+        }
+
+        /* Layout helpers */
         .eco-card {
           background: #2a2a2a;
           border-radius: 12px;
@@ -200,7 +308,7 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
           <div style={{ fontSize: '44px' }}>♻️</div>
         </div>
 
-        {/* ── Always-visible top metrics ──────────────────────────────────── */}
+        {/* ── Top metrics ────────────────────────────────────────────────── */}
         <div className="eco-card">
           <h2>Your Impact</h2>
           <div className="impact-grid">
@@ -236,13 +344,15 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
             </button>
           </div>
 
-          {/* Unlocked badges — always visible */}
           {unlockedBadges.length > 0 ? (
             <>
               <p style={{ color:'#888', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.5px', margin:'0 0 10px' }}>Unlocked</p>
               <div className="badge-grid">
                 {unlockedBadges.map(b => (
-                  <div key={b.id} className="badge-unlocked">
+                  <div
+                    key={b.id}
+                    className={`badge-unlocked ${newlyUnlocked?.id === b.id ? 'badge-new' : ''}`}
+                  >
                     <div style={{ fontSize:'22px', marginBottom:'4px' }}>🏅</div>
                     <div style={{ fontSize:'12px' }}>{b.label}</div>
                     <div style={{ fontSize:'10px', fontWeight:'normal', marginTop:'2px', opacity:0.8 }}>{b.desc}</div>
@@ -254,7 +364,6 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
             <p style={{ color:'#666', fontSize:'13px', margin:'0 0 4px' }}>No badges unlocked yet. Start riding!</p>
           )}
 
-          {/* Locked badges — only visible when showBadges is true */}
           {showBadges && (() => {
             const lockedBadges = badges.filter(b => !b.unlocked);
             if (lockedBadges.length === 0) return null;
@@ -263,7 +372,6 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
                 <p style={{ color:'#888', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.5px', margin:'0 0 10px' }}>Locked — Progress</p>
                 <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
                   {lockedBadges.map(b => {
-                    // progress % toward this badge's CO₂ threshold
                     const pct = Math.min(99, Math.max(0, b.progress ?? 0));
                     return (
                       <div key={b.id} style={{ background:'#333', border:'1px solid #444', borderRadius:'8px', padding:'12px' }}>
@@ -332,9 +440,9 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
 
         {/* ── Tabs ────────────────────────────────────────────────────────── */}
         <div className="tabs">
-          <button className={`tab ${viewMode === 'overview'   ? 'active' : ''}`} onClick={() => setViewMode('overview')}>📊 Overview</button>
-          <button className={`tab ${viewMode === 'detailed'   ? 'active' : ''}`} onClick={() => { setViewMode('detailed'); setTripLimit(5); }}>📈 Trip Details</button>
-          <button className={`tab ${viewMode === 'leaderboard'? 'active' : ''}`} onClick={() => setViewMode('leaderboard')}>🏅 Leaderboard</button>
+          <button className={`tab ${viewMode === 'overview'    ? 'active' : ''}`} onClick={() => setViewMode('overview')}>📊 Overview</button>
+          <button className={`tab ${viewMode === 'detailed'    ? 'active' : ''}`} onClick={() => { setViewMode('detailed'); setTripLimit(5); }}>📈 Trip Details</button>
+          <button className={`tab ${viewMode === 'leaderboard' ? 'active' : ''}`} onClick={() => setViewMode('leaderboard')}>🏅 Leaderboard</button>
         </div>
 
         {/* ── OVERVIEW TAB ────────────────────────────────────────────────── */}
@@ -346,53 +454,28 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
             ) : (
               <>
                 <div className="overview-grid">
-                  <div className="stat-tile">
-                    <div className="val">{totalTrips}</div>
-                    <div className="lbl">Total Trips</div>
-                  </div>
-                  <div className="stat-tile">
-                    <div className="val">{totalDistance.toFixed(1)} km</div>
-                    <div className="lbl">Distance</div>
-                  </div>
-                  <div className="stat-tile">
-                    <div className="val">{totalDurationHrs} h</div>
-                    <div className="lbl">Time Riding</div>
-                  </div>
-                  <div className="stat-tile">
-                    <div className="val" style={{ color: scoreColor(avgEcoScore) }}>{avgEcoScore}</div>
-                    <div className="lbl">Avg Eco Score</div>
-                  </div>
-                  <div className="stat-tile">
-                    <div className="val" style={{ color: '#4CAF50' }}>{bestEcoScore}</div>
-                    <div className="lbl">Best Score</div>
-                  </div>
-                  <div className="stat-tile">
-                    <div className="val">{savedCO2.toFixed(2)} kg</div>
-                    <div className="lbl">CO₂ Saved</div>
-                  </div>
-                  <div className="stat-tile">
-                    <div className="val">{treeEquiv.toFixed(2)}</div>
-                    <div className="lbl">Tree Equiv.</div>
-                  </div>
-                  <div className="stat-tile">
-                    <div className="val">{unlockedBadges.length}</div>
-                    <div className="lbl">Badges Earned</div>
-                  </div>
+                  <div className="stat-tile"><div className="val">{totalTrips}</div><div className="lbl">Total Trips</div></div>
+                  <div className="stat-tile"><div className="val">{totalDistance.toFixed(1)} km</div><div className="lbl">Distance</div></div>
+                  <div className="stat-tile"><div className="val">{totalDurationHrs} h</div><div className="lbl">Time Riding</div></div>
+                  <div className="stat-tile"><div className="val" style={{ color: scoreColor(avgEcoScore) }}>{avgEcoScore}</div><div className="lbl">Avg Eco Score</div></div>
+                  <div className="stat-tile"><div className="val" style={{ color: '#4CAF50' }}>{bestEcoScore}</div><div className="lbl">Best Score</div></div>
+                  <div className="stat-tile"><div className="val">{savedCO2.toFixed(2)} kg</div><div className="lbl">CO₂ Saved</div></div>
+                  <div className="stat-tile"><div className="val">{treeEquiv.toFixed(2)}</div><div className="lbl">Tree Equiv.</div></div>
+                  <div className="stat-tile"><div className="val">{unlockedBadges.length}</div><div className="lbl">Badges Earned</div></div>
                 </div>
 
-                {/* Score distribution */}
                 <h2 style={{ marginBottom:'12px' }}>Score Distribution</h2>
                 {(() => {
-                  const eco        = tripHistory.filter(t => (t.score || t.ecoScore || 0) >= 80).length;
-                  const good       = tripHistory.filter(t => { const s = t.score || t.ecoScore || 0; return s >= 60 && s < 80; }).length;
-                  const poor       = tripHistory.filter(t => (t.score || t.ecoScore || 0) < 60).length;
-                  const pct = (n) => totalTrips > 0 ? Math.round((n / totalTrips) * 100) : 0;
+                  const eco  = tripHistory.filter(t => (t.score || t.ecoScore || 0) >= 80).length;
+                  const good = tripHistory.filter(t => { const s = t.score || t.ecoScore || 0; return s >= 60 && s < 80; }).length;
+                  const poor = tripHistory.filter(t => (t.score || t.ecoScore || 0) < 60).length;
+                  const pct  = (n) => totalTrips > 0 ? Math.round((n / totalTrips) * 100) : 0;
                   return (
                     <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
                       {[
-                        { label:'Eco (80+)',  count: eco,  color:'#4CAF50' },
+                        { label:'Eco (80+)',   count: eco,  color:'#4CAF50' },
                         { label:'Good (60–79)',count: good, color:'#ffc107' },
-                        { label:'Poor (<60)', count: poor, color:'#dc3545' },
+                        { label:'Poor (<60)',  count: poor, color:'#dc3545' },
                       ].map(row => (
                         <div key={row.label}>
                           <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', marginBottom:'4px' }}>
@@ -408,7 +491,6 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
                   );
                 })()}
 
-                {/* Recent 3 trips quick view */}
                 <h2 style={{ margin:'20px 0 12px' }}>Recent Trips</h2>
                 {tripHistory.slice(-3).reverse().map((t, i) => {
                   const s    = t.score || t.ecoScore || 0;
@@ -449,20 +531,19 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
             ) : (
               <div style={{ maxHeight:'500px', overflowY:'auto' }}>
                 {tripHistory.slice().reverse().slice(0, tripLimit).map((trip, idx) => {
-                  const s        = trip.score || trip.ecoScore || 0;
-                  const dist     = (trip.distanceKm || trip.distance || 0);
-                  const dur      = trip.duration || trip.durationSeconds || 0;
-                  const speed    = trip.avgSpeed || trip.avgSpeedKmh || 0;
-                  const battery  = trip.batteryUsed || trip.batteryUsedPercent || 0;
-                  const name     = trip.riderName || 'Rider';
-                  const co2      = calculateCO2Savings(dist).savedCO2;
-                  const date     = new Date(trip.timestamp);
-                  const dateStr  = isNaN(date) ? '—' : date.toLocaleDateString();
-                  const timeStr  = isNaN(date) ? '' : date.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+                  const s       = trip.score || trip.ecoScore || 0;
+                  const dist    = (trip.distanceKm || trip.distance || 0);
+                  const dur     = trip.duration || trip.durationSeconds || 0;
+                  const speed   = trip.avgSpeed || trip.avgSpeedKmh || 0;
+                  const battery = trip.batteryUsed || trip.batteryUsedPercent || 0;
+                  const name    = trip.riderName || 'Rider';
+                  const co2     = calculateCO2Savings(dist).savedCO2;
+                  const date    = new Date(trip.timestamp);
+                  const dateStr = isNaN(date) ? '—' : date.toLocaleDateString();
+                  const timeStr = isNaN(date) ? '' : date.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
 
                   return (
                     <div key={idx} className="trip-card" style={{ borderLeft:`4px solid ${scoreColor(s)}` }}>
-                      {/* Header row: rider + date */}
                       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px' }}>
                         <div>
                           <span style={{ fontWeight:'700', color:'#fff', fontSize:'14px' }}>{name}</span>
@@ -472,42 +553,17 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
                         </div>
                         <span style={{ color:'#888', fontSize:'11px' }}>{dateStr} {timeStr}</span>
                       </div>
-
-                      {/* Stats grid */}
                       <div className="trip-card-grid">
-                        <div className="trip-card-field">
-                          <div className="f-label">Distance</div>
-                          <div className="f-val">{dist.toFixed(2)} km</div>
-                        </div>
-                        <div className="trip-card-field">
-                          <div className="f-label">Duration</div>
-                          <div className="f-val">{Math.floor(dur/60)}m {dur%60}s</div>
-                        </div>
-                        <div className="trip-card-field">
-                          <div className="f-label">Avg Speed</div>
-                          <div className="f-val">{parseFloat(speed).toFixed(1)} km/h</div>
-                        </div>
-                        <div className="trip-card-field">
-                          <div className="f-label">Eco Score</div>
-                          <div className="f-val" style={{ color: scoreColor(s) }}>{s}/100</div>
-                        </div>
-                        <div className="trip-card-field">
-                          <div className="f-label">CO₂ Saved</div>
-                          <div className="f-val">{co2.toFixed(2)} kg</div>
-                        </div>
-                        <div className="trip-card-field">
-                          <div className="f-label">Battery Used</div>
-                          <div className="f-val">{parseFloat(battery).toFixed(1)}%</div>
-                        </div>
+                        <div className="trip-card-field"><div className="f-label">Distance</div><div className="f-val">{dist.toFixed(2)} km</div></div>
+                        <div className="trip-card-field"><div className="f-label">Duration</div><div className="f-val">{Math.floor(dur/60)}m {dur%60}s</div></div>
+                        <div className="trip-card-field"><div className="f-label">Avg Speed</div><div className="f-val">{parseFloat(speed).toFixed(1)} km/h</div></div>
+                        <div className="trip-card-field"><div className="f-label">Eco Score</div><div className="f-val" style={{ color: scoreColor(s) }}>{s}/100</div></div>
+                        <div className="trip-card-field"><div className="f-label">CO₂ Saved</div><div className="f-val">{co2.toFixed(2)} kg</div></div>
+                        <div className="trip-card-field"><div className="f-label">Battery Used</div><div className="f-val">{parseFloat(battery).toFixed(1)}%</div></div>
                         {trip.worstAxis && (
-                          <div className="trip-card-field">
-                            <div className="f-label">Focus Area</div>
-                            <div className="f-val" style={{ textTransform:'capitalize' }}>{trip.worstAxis}</div>
-                          </div>
+                          <div className="trip-card-field"><div className="f-label">Focus Area</div><div className="f-val" style={{ textTransform:'capitalize' }}>{trip.worstAxis}</div></div>
                         )}
                       </div>
-
-                      {/* Actions */}
                       <div style={{ display:'flex', gap:'8px', marginTop:'4px' }}>
                         <button className="btn-small" onClick={() => handleExportTrip(trip)}>📄 Export PDF</button>
                         <button
@@ -518,12 +574,10 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
                           {selectedTrip?.timestamp === trip.timestamp ? '▲ Less' : '▼ More'}
                         </button>
                       </div>
-
-                      {/* Expanded detail */}
                       {selectedTrip?.timestamp === trip.timestamp && (
                         <div style={{ marginTop:'10px', padding:'10px', background:'#2a2a2a', borderRadius:'6px', fontSize:'12px', color:'#aaa', lineHeight:'1.7' }}>
                           <div>🛢 Ride Style: <strong style={{ color:'#e0e0e0', textTransform:'capitalize' }}>{trip.rideStyle || '—'}</strong></div>
-                          <div>⚡ Consumption: <strong style={{ color:'#e0e0e0' }}>{trip.consumptionWh || trip.consumptionWh || '—'} Wh/km</strong></div>
+                          <div>⚡ Consumption: <strong style={{ color:'#e0e0e0' }}>{trip.consumptionWh || '—'} Wh/km</strong></div>
                           <div>🔋 Battery Remaining: <strong style={{ color:'#e0e0e0' }}>{trip.batteryRemaining ?? '—'}%</strong></div>
                           <div>🌲 Tree Equiv: <strong style={{ color:'#4CAF50' }}>{calculateTreeEquivalents(co2).toFixed(3)}</strong></div>
                         </div>
@@ -533,7 +587,6 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
                 })}
               </div>
             )}
-            {/* Load more / show less controls */}
             {totalTrips > 5 && (
               <div style={{ display:'flex', gap:'10px', marginTop:'14px' }}>
                 {tripLimit < totalTrips && (
@@ -542,9 +595,7 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
                   </button>
                 )}
                 {tripLimit > 5 && (
-                  <button className="btn-small" onClick={() => setTripLimit(5)}>
-                    Show Less
-                  </button>
+                  <button className="btn-small" onClick={() => setTripLimit(5)}>Show Less</button>
                 )}
               </div>
             )}
@@ -561,12 +612,8 @@ const EnvironmentalImpactHub = ({ tripHistory = [], currentTrip = null, allRider
               <table className="leaderboard-table">
                 <thead>
                   <tr>
-                    <th>Rank</th>
-                    <th>Rider</th>
-                    <th>CO₂ Saved</th>
-                    <th>Tree Equiv.</th>
-                    <th>Trips</th>
-                    <th>Avg Score</th>
+                    <th>Rank</th><th>Rider</th><th>CO₂ Saved</th>
+                    <th>Tree Equiv.</th><th>Trips</th><th>Avg Score</th>
                   </tr>
                 </thead>
                 <tbody>
