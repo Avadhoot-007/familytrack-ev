@@ -410,7 +410,8 @@ export default function RiderDashboard({ riderName }) {
       };
 
       await set(ref(db, `riders/${riderId}/profile`), { name: riderName });
-      await set(ref(db, `riders/${riderId}/trips/${tripDataObj.timestamp}`), tripDataObj);
+     const simTripId = `sim-${Date.now()}`;
+await set(ref(db, `riders/${riderId}/trips/${simTripId}`), tripDataObj);
 
       setBattery(newBattery);
       batteryRef.current = newBattery;
