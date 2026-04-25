@@ -7,10 +7,26 @@ const STORAGE_KEY = 'familytrack-ev-store';
 export const useStore = create(
   persist(
     (set, get) => ({
-      // Auth
-      userId: null,
-      riderName: null,
+      // Auth — works for both Google and Guest flows
+      userId: null,       // Firebase uid (Google) or null (Guest)
+      riderName: null,    // display name
+      role: null,         // 'rider' | 'watcher' | null
+      familyId: null,     // set after family join/create (Google flow only)
+      isGuest: false,     // true when using name-based guest flow
+
       setAuth: (userId, riderName) => set({ userId, riderName }),
+
+      setGoogleUser: ({ uid, displayName, familyId, role }) =>
+        set({ userId: uid, riderName: displayName, familyId, role, isGuest: false }),
+
+      setGuest: (name) =>
+        set({ riderName: name, isGuest: true, userId: null, familyId: null, role: null }),
+
+      setFamilyId: (familyId) => set({ familyId }),
+      setRole: (role) => set({ role }),
+
+      clearAuth: () =>
+        set({ userId: null, riderName: null, role: null, familyId: null, isGuest: false }),
 
       // Current trip
       isSharing: false,
@@ -45,14 +61,12 @@ export const useStore = create(
           id: trip.id || `trip-${Date.now()}`,
           timestamp: trip.timestamp || new Date().toISOString(),
         };
-        // Deduplicate by timestamp
         const exists = state.tripHistory.some(t => t.timestamp === newTrip.timestamp);
         if (exists) return {};
         const updated = [...state.tripHistory, newTrip].slice(-100);
 
-        // Fire-and-forget Firebase write
-        const riderId = state.riderName
-          ?.toLowerCase().replace(/\s+/g, '-') || null;
+        const riderId = state.userId ||
+          state.riderName?.toLowerCase().replace(/\s+/g, '-') || null;
         if (riderId) {
           persistTripToFirebase(riderId, newTrip);
         }
@@ -80,18 +94,15 @@ export const useStore = create(
         battery: state.battery,
         riderName: state.riderName,
         userId: state.userId,
+        familyId: state.familyId,
+        role: state.role,
+        isGuest: state.isGuest,
         tripHistory: state.tripHistory,
       }),
     }
   )
 );
 
-/**
- * Hydrate trip history.
- * 1. Wait for Zustand persist rehydration (localStorage).
- * 2. If localStorage has trips — done, Firebase is backup only.
- * 3. If localStorage is empty — attempt Firebase load for this rider.
- */
 export const hydrateTripsFromStorage = async () => {
   return new Promise((resolve) => {
     setTimeout(async () => {
@@ -104,9 +115,8 @@ export const hydrateTripsFromStorage = async () => {
         return;
       }
 
-      // localStorage empty — try Firebase
-      const riderId = state.riderName
-        ?.toLowerCase().replace(/\s+/g, '-') || null;
+      const riderId = state.userId ||
+        state.riderName?.toLowerCase().replace(/\s+/g, '-') || null;
 
       if (riderId) {
         const firebaseTrips = await loadTripsFromFirebase(riderId);
@@ -125,7 +135,6 @@ export const hydrateTripsFromStorage = async () => {
   });
 };
 
-// Expose to window for debugging
 if (typeof window !== 'undefined') {
   window.useStore = useStore;
 }

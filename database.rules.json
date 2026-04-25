@@ -1,8 +1,8 @@
 {
   "rules": {
     "riders": {
+      ".read": true,
       "$riderId": {
-        ".read": true,
         ".write": "auth !== null",
         "location": {
           ".validate": "newData.hasChildren(['lat', 'lon', 'battery', 'timestamp'])"
@@ -15,6 +15,11 @@
             ".validate": "newData.hasChildren(['timestamp', 'distanceKm', 'score'])"
           }
         },
+        "tripHistory": {
+          "$tripId": {
+            ".write": "auth !== null"
+          }
+        },
         "coachingTips": {
           "$tipId": {
             ".validate": "newData.hasChildren(['title', 'message', 'sentAt'])"
@@ -24,8 +29,20 @@
     },
     "families": {
       "$familyId": {
-        ".read": "root.child('families').child($familyId).child('members').child(auth.uid).exists()",
-        ".write": "root.child('families').child($familyId).child('members').child(auth.uid).exists()"
+        ".read": "auth !== null && root.child('families').child($familyId).child('members').child(auth.uid).exists()",
+        ".write": "auth !== null && (root.child('families').child($familyId).child('members').child(auth.uid).exists() || !data.exists())"
+      }
+    },
+    "invites": {
+      "$code": {
+        ".read": "auth !== null",
+        ".write": "auth !== null"
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth !== null && auth.uid === $uid",
+        ".write": "auth !== null && auth.uid === $uid"
       }
     }
   }
