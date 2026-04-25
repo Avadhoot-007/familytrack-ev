@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ref, onValue, update, push } from 'firebase/database';
 import { db } from '../config/firebase';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './WatcherDashboard.css';
@@ -17,6 +17,14 @@ const getRiderColor = (index) => RIDER_COLORS[index % RIDER_COLORS.length];
 
 const validCoords = (lat, lon) =>
   lat != null && lon != null && !isNaN(Number(lat)) && !isNaN(Number(lon));
+
+// Validate a route array — must be array of [lat, lon] pairs with valid numbers
+const validRoute = (route) =>
+  Array.isArray(route) &&
+  route.length >= 2 &&
+  route.every(
+    (p) => Array.isArray(p) && p.length === 2 && !isNaN(Number(p[0])) && !isNaN(Number(p[1]))
+  );
 
 const createDivIcon = (color, label) =>
   L.divIcon({
@@ -224,7 +232,6 @@ function TripHistoryTable({ trips, filterDays, onTripClick, onExportPDF }) {
   );
 }
 
-// ── Actionable Alert component ────────────────────────────────────────────────
 function AlertItem({ alert, riders, onSendReminder, onDismiss }) {
   const bgColor     = alert.type === 'danger'  ? '#3d1a1a' : alert.type === 'success' ? '#1a3d1a' : '#3d3200';
   const borderColor = alert.type === 'danger'  ? '#f5c6cb' : alert.type === 'success' ? '#28a745'  : '#ffc107';
@@ -294,7 +301,6 @@ function AlertItem({ alert, riders, onSendReminder, onDismiss }) {
   );
 }
 
-// ── Tip templates ─────────────────────────────────────────────────────────────
 const REMINDER_TIPS = {
   low_battery: {
     title: 'Low Battery — Find a Charger',
@@ -322,7 +328,36 @@ const REMINDER_TIPS = {
   },
 };
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Route legend component ────────────────────────────────────────────────────
+function RouteLegend({ riders, riderColorMap }) {
+  const onlineWithRoutes = Object.entries(riders).filter(([riderId, r]) => {
+    const route = r.currentRoute;
+    return r.status === 'online' && validRoute(route);
+  });
+
+  if (!onlineWithRoutes.length) return null;
+
+  return (
+    <div style={{
+      position: 'absolute', top: '10px', left: '10px', zIndex: 1000,
+      background: 'rgba(0,0,0,0.75)', borderRadius: '6px',
+      padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '4px',
+    }}>
+      {onlineWithRoutes.map(([riderId, r]) => {
+        const name  = r.location?.name || riderId;
+        const color = riderColorMap.current[riderId] || '#e53935';
+        const pts   = r.currentRoute.length;
+        return (
+          <div key={riderId} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#e0e0e0' }}>
+            <div style={{ width: '20px', height: '3px', background: color, borderRadius: '2px' }} />
+            <span>{name} ({pts} pts)</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function WatcherDashboard() {
   const [riders, setRiders]                   = useState({});
   const [alerts, setAlerts]                   = useState([]);
@@ -339,6 +374,9 @@ export default function WatcherDashboard() {
 
   const [chargingStations, setChargingStations] = useState([]);
   const chargingFetchedRef                    = useRef(false);
+
+  // ── Route display toggle ──────────────────────────────────────────────────
+  const [showRoutes, setShowRoutes]           = useState(true);
 
   const batteryAlertedRef = useRef({});
   const drainAlertedRef   = useRef({});
@@ -618,6 +656,17 @@ export default function WatcherDashboard() {
     }
   };
 
+  // ── Fit map to all online riders ──────────────────────────────────────────
+  const handleFitAll = () => {
+    if (!mapRef.current || !onlineRiders.length) return;
+    const bounds = onlineRiders.map(([, r]) => [r.location.lat, r.location.lon ?? r.location.lng]);
+    if (bounds.length === 1) {
+      mapRef.current.setView(bounds[0], 14);
+    } else {
+      mapRef.current.fitBounds(bounds, { padding: [40, 40] });
+    }
+  };
+
   return (
     <div className="watcher-dashboard">
       <h1 style={{ margin: '0 0 16px', fontSize: 'clamp(20px, 5vw, 28px)' }}>Watcher Dashboard</h1>
@@ -663,8 +712,34 @@ export default function WatcherDashboard() {
       {/* Map + Alerts grid */}
       <div className="watcher-map-alerts-grid">
         <div className="map-wrapper">
-          <button onClick={handleRecenterMap} className="recenter-btn" title="Recenter map">📍 Recenter</button>
+          {/* Map controls row */}
+          <div style={{
+            position: 'absolute', bottom: '15px', right: '15px',
+            zIndex: 1000, display: 'flex', gap: '8px',
+          }}>
+            <button onClick={handleFitAll} className="recenter-btn" title="Fit all riders">
+              🗺️ Fit All
+            </button>
+            <button onClick={handleRecenterMap} className="recenter-btn" title="Recenter map">
+              📍 Recenter
+            </button>
+          </div>
 
+          {/* Route toggle */}
+          <button
+            onClick={() => setShowRoutes((v) => !v)}
+            style={{
+              position: 'absolute', top: '50px', right: '10px', zIndex: 1000,
+              padding: '5px 10px', fontSize: '12px', fontWeight: '600',
+              background: showRoutes ? 'rgba(76,175,80,0.85)' : 'rgba(0,0,0,0.65)',
+              border: '1px solid rgba(255,255,255,0.2)', borderRadius: '5px',
+              color: 'white', cursor: 'pointer',
+            }}
+          >
+            {showRoutes ? '🛣️ Routes ON' : '🛣️ Routes OFF'}
+          </button>
+
+          {/* Charging stations badge */}
           {chargingStations.length > 0 && (
             <div style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 1000, background: 'rgba(0,0,0,0.7)', color: 'white', borderRadius: '6px', padding: '4px 8px', fontSize: '12px' }}>
               ⚡ {chargingStations.length} chargers nearby
@@ -679,6 +754,51 @@ export default function WatcherDashboard() {
             />
             <MapController onMapReady={handleMapReady} />
 
+            {/* ── LIVE route polylines (currentRoute) ─────────────────────── */}
+            {showRoutes && onlineRiders.map(([riderId, riderData]) => {
+              const route = riderData.currentRoute;
+              if (!validRoute(route)) return null;
+              const color = riderColorMap.current[riderId] || '#e53935';
+              return (
+                <Polyline
+                  key={`route-live-${riderId}`}
+                  positions={route}
+                  pathOptions={{
+                    color,
+                    weight: 4,
+                    opacity: 0.85,
+                    lineJoin: 'round',
+                    lineCap: 'round',
+                  }}
+                />
+              );
+            })}
+
+            {/* ── Last completed trip route (dimmer) ──────────────────────── */}
+            {showRoutes && Object.entries(riders).map(([riderId, riderData]) => {
+              // Only show for offline riders (trip just ended) or as historical trail
+              if (riderData.status === 'online') return null;
+              const trips = riderData.trips ? Object.values(riderData.trips) : [];
+              if (!trips.length) return null;
+              const lastTrip = trips.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+              if (!validRoute(lastTrip.route)) return null;
+              const color = riderColorMap.current[riderId] || '#999';
+              return (
+                <Polyline
+                  key={`route-last-${riderId}`}
+                  positions={lastTrip.route}
+                  pathOptions={{
+                    color,
+                    weight: 3,
+                    opacity: 0.4,
+                    dashArray: '6 8',
+                    lineJoin: 'round',
+                  }}
+                />
+              );
+            })}
+
+            {/* ── Online rider markers ─────────────────────────────────────── */}
             {onlineRiders.map(([riderId, riderData]) => {
               const hasSOS = riderData.sosTriggered && !riderData.sosResolved;
               const bat    = Number(riderData.location.battery ?? 100);
@@ -695,11 +815,15 @@ export default function WatcherDashboard() {
                     🟢 Online
                     {weather && <><br />{rain ? '🌧️' : '☀️'} {weather.description}, {weather.temp}°C</>}
                     {hasSOS && <><br /><span style={{ color: 'red', fontWeight: 'bold' }}>🚨 SOS ACTIVE</span></>}
+                    {validRoute(riderData.currentRoute) && (
+                      <><br />🛣️ {riderData.currentRoute.length} route points</>
+                    )}
                   </Popup>
                 </Marker>
               );
             })}
 
+            {/* ── Offline rider markers ────────────────────────────────────── */}
             {offlineRiders.map(([riderId, riderData]) => {
               const name = riderData.location?.name || riderId;
               const lon  = riderData.location.lon ?? riderData.location.lng;
@@ -710,12 +834,14 @@ export default function WatcherDashboard() {
               );
             })}
 
+            {/* ── Geofences ───────────────────────────────────────────────── */}
             {geofences.map((zone) => (
               <Circle key={zone.id} center={[zone.lat, zone.lng]} radius={zone.radiusKm * 1000} fillColor="blue" fillOpacity={0.1} color="blue">
                 <Popup>{zone.name}</Popup>
               </Circle>
             ))}
 
+            {/* ── Charging stations ────────────────────────────────────────── */}
             {chargingStations.map((s) => (
               <Marker key={s.id} position={[s.lat, s.lon]} icon={createChargingIcon()}>
                 <Popup>
@@ -731,6 +857,9 @@ export default function WatcherDashboard() {
               </Marker>
             ))}
           </MapContainer>
+
+          {/* Route legend — inside map wrapper, above map */}
+          {showRoutes && <RouteLegend riders={riders} riderColorMap={riderColorMap} />}
         </div>
 
         {/* Alerts panel */}
