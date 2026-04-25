@@ -83,7 +83,7 @@ function RainPrompt({ prompts, onDismiss }) {
           border: '1px solid #3949ab', borderRadius: '8px', color: 'white', fontSize: '14px',
           boxShadow: '0 2px 8px rgba(26,35,126,0.3)', animation: 'slideDown 0.3s ease',
         }}>
-          <span>🌧️ <strong>Weather Alert:</strong> {p.message}</span>
+          <span style={{ flex: 1, minWidth: 0 }}>🌧️ <strong>Weather Alert:</strong> {p.message}</span>
           <button onClick={() => onDismiss(p.id)} style={{
             background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)',
             color: 'white', borderRadius: '4px', cursor: 'pointer',
@@ -153,15 +153,15 @@ function TripStatsSummary({ trips, filterDays }) {
   const worstScore    = Math.min(...filtered.map((t) => Number(t.score || 0)));
 
   const StatBox = ({ emoji, label, value }) => (
-    <div style={{ background: '#f9f9f9', border: '1px solid #ddd', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+    <div style={{ background: '#2a2a2a', border: '1px solid #444', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
       <div style={{ fontSize: '24px', marginBottom: '4px' }}>{emoji}</div>
-      <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#333', marginBottom: '4px' }}>{value}</div>
+      <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff', marginBottom: '4px' }}>{value}</div>
       <div style={{ fontSize: '12px', color: '#999' }}>{label}</div>
     </div>
   );
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+    <div className="watcher-stats-grid">
       <StatBox emoji="🚴" label="Total Trips"    value={totalTrips} />
       <StatBox emoji="🌿" label="Avg Score"      value={avgScore.toFixed(0)} />
       <StatBox emoji="⬆️" label="Best Score"    value={bestScore} />
@@ -186,32 +186,32 @@ function TripHistoryTable({ trips, filterDays, onTripClick, onExportPDF }) {
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
         <thead>
-          <tr style={{ background: '#f5f5f5', borderBottom: '2px solid #ddd' }}>
-            <th style={{ padding: '8px', textAlign: 'left' }}>Rider</th>
-            <th style={{ padding: '8px', textAlign: 'left' }}>Date</th>
-            <th style={{ padding: '8px', textAlign: 'center' }}>Score</th>
-            <th style={{ padding: '8px', textAlign: 'center' }}>Distance (km)</th>
-            <th style={{ padding: '8px', textAlign: 'center' }}>Avg Speed (km/h)</th>
-            <th style={{ padding: '8px', textAlign: 'center' }}>Actions</th>
+          <tr style={{ background: '#1a1a1a', borderBottom: '2px solid #333' }}>
+            <th style={{ padding: '8px', textAlign: 'left', color: '#fff' }}>Rider</th>
+            <th style={{ padding: '8px', textAlign: 'left', color: '#fff' }}>Date</th>
+            <th style={{ padding: '8px', textAlign: 'center', color: '#fff' }}>Score</th>
+            <th className="trip-col-distance" style={{ padding: '8px', textAlign: 'center', color: '#fff' }}>Distance (km)</th>
+            <th className="trip-col-speed" style={{ padding: '8px', textAlign: 'center', color: '#fff' }}>Avg Speed (km/h)</th>
+            <th style={{ padding: '8px', textAlign: 'center', color: '#fff' }}>Actions</th>
           </tr>
         </thead>
         <tbody>
           {filtered.map((trip) => (
-            <tr key={trip.id} style={{ borderBottom: '1px solid #eee' }}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#f9f9f9'}
+            <tr key={trip.id} style={{ borderBottom: '1px solid #2a2a2a' }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#1a1a1a'}
               onMouseLeave={(e) => e.currentTarget.style.background = ''}>
-              <td style={{ padding: '8px', fontWeight: 'bold', color: trip.riderColor || '#333' }}>
+              <td style={{ padding: '8px', fontWeight: 'bold', color: trip.riderColor || '#fff' }}>
                 {trip.riderName || trip.riderId}
               </td>
-              <td style={{ padding: '8px' }}>
+              <td style={{ padding: '8px', color: '#ccc' }}>
                 {new Date(trip.timestamp).toLocaleDateString()}{' '}
                 {new Date(trip.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </td>
               <td style={{ padding: '8px', textAlign: 'center' }}>
                 <span style={{ color: scoreColor(trip.score), fontWeight: 'bold' }}>🌿 {trip.score}</span>
               </td>
-              <td style={{ padding: '8px', textAlign: 'center' }}>{trip.distanceKm ?? '—'}</td>
-              <td style={{ padding: '8px', textAlign: 'center' }}>{trip.avgSpeedKmh ?? '—'}</td>
+              <td className="trip-col-distance" style={{ padding: '8px', textAlign: 'center', color: '#ccc' }}>{trip.distanceKm ?? '—'}</td>
+              <td className="trip-col-speed" style={{ padding: '8px', textAlign: 'center', color: '#ccc' }}>{trip.avgSpeedKmh ?? '—'}</td>
               <td style={{ padding: '8px', textAlign: 'center' }}>
                 <button onClick={() => onTripClick(trip)} style={{ padding: '4px 8px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginRight: '4px', fontSize: '12px' }}>View</button>
                 <button onClick={() => onExportPDF(trip)} style={{ padding: '4px 8px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>PDF</button>
@@ -226,94 +226,66 @@ function TripHistoryTable({ trips, filterDays, onTripClick, onExportPDF }) {
 
 // ── Actionable Alert component ────────────────────────────────────────────────
 function AlertItem({ alert, riders, onSendReminder, onDismiss }) {
-  const bgColor     = alert.type === 'danger'  ? '#f8d7da' : alert.type === 'success' ? '#d4edda' : '#fff3cd';
+  const bgColor     = alert.type === 'danger'  ? '#3d1a1a' : alert.type === 'success' ? '#1a3d1a' : '#3d3200';
   const borderColor = alert.type === 'danger'  ? '#f5c6cb' : alert.type === 'success' ? '#28a745'  : '#ffc107';
+  const textColor   = alert.type === 'danger'  ? '#ffcdd2' : alert.type === 'success' ? '#c8e6c9'  : '#ffe082';
 
   return (
     <div style={{
       padding: '10px 12px', margin: '5px 0', background: bgColor,
       border: `1px solid ${borderColor}`, borderRadius: '6px', fontSize: '13px',
+      color: textColor,
       fontWeight: alert.type === 'danger' ? 'bold' : 'normal',
     }}>
       <div style={{ marginBottom: alert.actionType ? '8px' : 0 }}>{alert.message}</div>
 
-      {/* Charging reminder action */}
       {alert.actionType === 'charging_reminder' && alert.riderId && (
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button
             onClick={() => onSendReminder(alert.riderId, alert.riderName, 'low_battery')}
-            style={{
-              padding: '4px 10px', background: '#ffc107', border: 'none',
-              borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-            }}
+            style={{ padding: '4px 10px', background: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', color: '#1a1a1a' }}
           >
             💬 Send Charging Reminder
           </button>
           {alert.stationUrl && (
-            <a
-              href={alert.stationUrl}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                padding: '4px 10px', background: '#17a2b8', color: 'white',
-                borderRadius: '4px', textDecoration: 'none', fontSize: '12px', fontWeight: '600',
-              }}
-            >
+            <a href={alert.stationUrl} target="_blank" rel="noreferrer"
+              style={{ padding: '4px 10px', background: '#17a2b8', color: 'white', borderRadius: '4px', textDecoration: 'none', fontSize: '12px', fontWeight: '600' }}>
               🗺️ Nearest Station
             </a>
           )}
         </div>
       )}
 
-      {/* Critical battery action */}
       {alert.actionType === 'critical_battery' && alert.riderId && (
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button
             onClick={() => onSendReminder(alert.riderId, alert.riderName, 'critical_battery')}
-            style={{
-              padding: '4px 10px', background: '#dc3545', color: 'white', border: 'none',
-              borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-            }}
+            style={{ padding: '4px 10px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
           >
             🚨 Send Critical Alert
           </button>
           {alert.stationUrl && (
-            <a
-              href={alert.stationUrl}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                padding: '4px 10px', background: '#17a2b8', color: 'white',
-                borderRadius: '4px', textDecoration: 'none', fontSize: '12px', fontWeight: '600',
-              }}
-            >
+            <a href={alert.stationUrl} target="_blank" rel="noreferrer"
+              style={{ padding: '4px 10px', background: '#17a2b8', color: 'white', borderRadius: '4px', textDecoration: 'none', fontSize: '12px', fontWeight: '600' }}>
               🗺️ Open Station in Maps
             </a>
           )}
         </div>
       )}
 
-      {/* Aggressive drain action */}
       {alert.actionType === 'drain_warning' && alert.riderId && (
         <button
           onClick={() => onSendReminder(alert.riderId, alert.riderName, 'drain_warning')}
-          style={{
-            marginTop: '2px', padding: '4px 10px', background: '#fd7e14', color: 'white',
-            border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-          }}
+          style={{ marginTop: '2px', padding: '4px 10px', background: '#fd7e14', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
         >
           💬 Send Eco Tip
         </button>
       )}
 
-      {/* Rain tip action */}
       {alert.actionType === 'rain_tip' && alert.riderId && (
         <button
           onClick={() => onSendReminder(alert.riderId, alert.riderName, 'rain_tip')}
-          style={{
-            marginTop: '2px', padding: '4px 10px', background: '#1565c0', color: 'white',
-            border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-          }}
+          style={{ marginTop: '2px', padding: '4px 10px', background: '#1565c0', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
         >
           🌧️ Send Rain Warning
         </button>
@@ -322,7 +294,7 @@ function AlertItem({ alert, riders, onSendReminder, onDismiss }) {
   );
 }
 
-// ── Tip templates keyed by type ───────────────────────────────────────────────
+// ── Tip templates ─────────────────────────────────────────────────────────────
 const REMINDER_TIPS = {
   low_battery: {
     title: 'Low Battery — Find a Charger',
@@ -359,18 +331,15 @@ export default function WatcherDashboard() {
   const [firstOnlineRider, setFirstOnlineRider] = useState(null);
   const [selectedTrip, setSelectedTrip]       = useState(null);
   const [sosRider, setSosRider]               = useState(null);
-  const [reminderStatus, setReminderStatus]   = useState({}); // { [riderId_type]: 'sending'|'sent'|'error' }
+  const [reminderStatus, setReminderStatus]   = useState({});
 
-  // Weather
   const [riderWeather, setRiderWeather]       = useState({});
   const [rainPrompts, setRainPrompts]         = useState([]);
   const rainPromptedRef                       = useRef({});
 
-  // Charging stations on map
   const [chargingStations, setChargingStations] = useState([]);
   const chargingFetchedRef                    = useRef(false);
 
-  // Per-rider alert tracking
   const batteryAlertedRef = useRef({});
   const drainAlertedRef   = useRef({});
   const rangeAlertedRef   = useRef({});
@@ -383,7 +352,6 @@ export default function WatcherDashboard() {
 
   const handleMapReady = useCallback((m) => { mapRef.current = m; }, []);
 
-  // ── Fetch charging stations for map ───────────────────────────────────────
   const fetchMapStations = useCallback(async (lat, lon) => {
     if (chargingFetchedRef.current) return;
     chargingFetchedRef.current = true;
@@ -395,7 +363,6 @@ export default function WatcherDashboard() {
     }
   }, []);
 
-  // ── Weather polling ────────────────────────────────────────────────────────
   const pollWeather = useCallback(async (currentRiders) => {
     if (!OWM_KEY) return;
     const onlineEntries = Object.entries(currentRiders).filter(([, r]) => {
@@ -429,7 +396,6 @@ export default function WatcherDashboard() {
 
   const dismissRainPrompt = useCallback((id) => setRainPrompts((p) => p.filter((r) => r.id !== id)), []);
 
-  // ── Alert helper ──────────────────────────────────────────────────────────
   const addAlert = (message, type = 'warning', extra = {}) => {
     setAlerts((prev) => [
       { id: `alert-${Date.now()}-${Math.random()}`, message, type, ...extra },
@@ -437,7 +403,6 @@ export default function WatcherDashboard() {
     ]);
   };
 
-  // ── Send coaching tip reminder to rider via Firebase ──────────────────────
   const handleSendReminder = async (riderId, riderName, tipType) => {
     const key = `${riderId}_${tipType}`;
     setReminderStatus((prev) => ({ ...prev, [key]: 'sending' }));
@@ -454,7 +419,6 @@ export default function WatcherDashboard() {
         read: false,
       });
       setReminderStatus((prev) => ({ ...prev, [key]: 'sent' }));
-      // Auto-clear "sent" status after 4s
       setTimeout(() => setReminderStatus((prev) => {
         const next = { ...prev };
         delete next[key];
@@ -466,7 +430,6 @@ export default function WatcherDashboard() {
     }
   };
 
-  // ── Firebase listener ─────────────────────────────────────────────────────
   useEffect(() => {
     const ridersRef = ref(db, 'riders');
     const unsubscribe = onValue(ridersRef, (snapshot) => {
@@ -484,7 +447,6 @@ export default function WatcherDashboard() {
       setRiders(data);
 
       Object.entries(data).forEach(([riderId, riderData]) => {
-        // ── SOS ──
         if (riderData.sosTriggered === true && !sosProcessedRef.current[riderId]) {
           sosProcessedRef.current[riderId] = true;
           setSosRider({ riderId, ...riderData });
@@ -500,38 +462,24 @@ export default function WatcherDashboard() {
         const riderName = loc.name || riderId;
         if (!validCoords(loc.lat, lon)) return;
 
-        // ── Battery alerts with action buttons ──
         const bat = Number(loc.battery ?? 100);
         if (!batteryAlertedRef.current[riderId]) batteryAlertedRef.current[riderId] = {};
         const ba = batteryAlertedRef.current[riderId];
 
         if (bat <= BATTERY_CRITICAL && !ba.critical) {
           ba.critical = true;
-          // Build nearest station Maps URL if we have any stations loaded
-          const nearestStation = null; // will be enriched below if we have stations
           addAlert(
             `🚨 ${riderName} battery CRITICAL (${bat}%)! They need to stop and charge immediately.`,
             'danger',
-            {
-              actionType: 'critical_battery',
-              riderId,
-              riderName,
-              stationUrl: `https://www.google.com/maps/search/EV+charging+station/@${loc.lat},${lon},15z`,
-            }
+            { actionType: 'critical_battery', riderId, riderName, stationUrl: `https://www.google.com/maps/search/EV+charging+station/@${loc.lat},${lon},15z` }
           );
-          // Also fetch map stations if not done yet
           if (isOnline) fetchMapStations(loc.lat, lon);
         } else if (bat <= BATTERY_LOW && bat > BATTERY_CRITICAL && !ba.low) {
           ba.low = true;
           addAlert(
             `🔋 ${riderName} battery is low (${bat}%). Consider sending a charging reminder.`,
             'warning',
-            {
-              actionType: 'charging_reminder',
-              riderId,
-              riderName,
-              stationUrl: `https://www.google.com/maps/search/EV+charging+station/@${loc.lat},${lon},15z`,
-            }
+            { actionType: 'charging_reminder', riderId, riderName, stationUrl: `https://www.google.com/maps/search/EV+charging+station/@${loc.lat},${lon},15z` }
           );
         }
 
@@ -540,7 +488,6 @@ export default function WatcherDashboard() {
 
         if (isOnline && bat <= BATTERY_LOW) fetchMapStations(loc.lat, lon);
 
-        // ── Trip-based alerts ──
         const trips = riderData.trips ? Object.values(riderData.trips) : [];
         if (trips.length > 0) {
           const latest = trips.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
@@ -550,7 +497,7 @@ export default function WatcherDashboard() {
             if (drainWh > DRAIN_BASELINE * DRAIN_ALERT_RATIO && !drainAlertedRef.current[riderId]) {
               drainAlertedRef.current[riderId] = true;
               addAlert(
-                `⚡ ${riderName} is draining battery fast (${drainWh} Wh/km vs ${DRAIN_BASELINE} normal). They may be riding aggressively.`,
+                `⚡ ${riderName} is draining battery fast (${drainWh} Wh/km vs ${DRAIN_BASELINE} normal).`,
                 'warning',
                 { actionType: 'drain_warning', riderId, riderName }
               );
@@ -566,14 +513,9 @@ export default function WatcherDashboard() {
             if (projRange < 5 && !rangeAlertedRef.current[riderId]) {
               rangeAlertedRef.current[riderId] = true;
               addAlert(
-                `📍 ${riderName} has less than 5 km range remaining! Send them to a charging station.`,
+                `📍 ${riderName} has less than 5 km range remaining!`,
                 'danger',
-                {
-                  actionType: 'critical_battery',
-                  riderId,
-                  riderName,
-                  stationUrl: `https://www.google.com/maps/search/EV+charging+station/@${loc.lat},${lon},15z`,
-                }
+                { actionType: 'critical_battery', riderId, riderName, stationUrl: `https://www.google.com/maps/search/EV+charging+station/@${loc.lat},${lon},15z` }
               );
             } else if (projRange >= 5) {
               rangeAlertedRef.current[riderId] = false;
@@ -581,7 +523,6 @@ export default function WatcherDashboard() {
           }
         }
 
-        // ── Geofence alerts ──
         if (!previousInsideRef.current[riderId]) previousInsideRef.current[riderId] = {};
         geofences.forEach((zone) => {
           const inside  = isInsideGeofence(loc.lat, lon, zone.lat, zone.lng, zone.radiusKm);
@@ -596,7 +537,6 @@ export default function WatcherDashboard() {
         });
       });
 
-      // Trips aggregation
       const trips = Object.entries(data).flatMap(([riderId, riderData]) => {
         if (!riderData.trips) return [];
         const riderName = riderData.location?.name || riderId;
@@ -619,7 +559,6 @@ export default function WatcherDashboard() {
     return () => unsubscribe();
   }, [fetchMapStations]);
 
-  // ── Weather polling ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!OWM_KEY) return;
     const ridersRef2 = ref(db, 'riders');
@@ -680,19 +619,19 @@ export default function WatcherDashboard() {
   };
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial' }}>
-      <h1>Watcher Dashboard</h1>
+    <div className="watcher-dashboard">
+      <h1 style={{ margin: '0 0 16px', fontSize: 'clamp(20px, 5vw, 28px)' }}>Watcher Dashboard</h1>
 
       <RainPrompt prompts={rainPrompts} onDismiss={dismissRainPrompt} />
 
       {!OWM_KEY && (
-        <div style={{ padding: '10px 14px', marginBottom: '12px', background: '#fff3cd', border: '1px solid #ffc107', borderRadius: '6px', fontSize: '13px', color: '#856404' }}>
+        <div style={{ padding: '10px 14px', marginBottom: '12px', background: '#2a2200', border: '1px solid #ffc107', borderRadius: '6px', fontSize: '13px', color: '#ffe082' }}>
           ⚠️ <strong>Weather overlay disabled.</strong> Add <code>VITE_OPENWEATHER_API_KEY</code> to your <code>.env</code> to enable rain alerts.
         </div>
       )}
 
       {/* Rider status pills */}
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+      <div className="watcher-pills-container">
         {Object.entries(riders).map(([riderId, riderData]) => {
           const isOnline = riderData.status === 'online';
           const color    = riderColorMap.current[riderId] || '#999';
@@ -705,9 +644,9 @@ export default function WatcherDashboard() {
           return (
             <span key={riderId} style={{
               padding: '4px 12px', borderRadius: '20px', fontSize: '13px',
-              background: hasSOS ? '#dc3545' : isOnline ? color : '#eee',
+              background: hasSOS ? '#dc3545' : isOnline ? color : '#2a2a2a',
               color: (isOnline || hasSOS) ? 'white' : '#999',
-              border: `1px solid ${hasSOS ? '#dc3545' : isOnline ? color : '#ddd'}`,
+              border: `1px solid ${hasSOS ? '#dc3545' : isOnline ? color : '#444'}`,
               fontWeight: hasSOS ? 'bold' : 'normal',
               animation: hasSOS ? 'pulse 1s infinite' : 'none',
             }}>
@@ -721,7 +660,8 @@ export default function WatcherDashboard() {
         })}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '30px' }}>
+      {/* Map + Alerts grid */}
+      <div className="watcher-map-alerts-grid">
         <div className="map-wrapper">
           <button onClick={handleRecenterMap} className="recenter-btn" title="Recenter map">📍 Recenter</button>
 
@@ -739,7 +679,6 @@ export default function WatcherDashboard() {
             />
             <MapController onMapReady={handleMapReady} />
 
-            {/* Online riders */}
             {onlineRiders.map(([riderId, riderData]) => {
               const hasSOS = riderData.sosTriggered && !riderData.sosResolved;
               const bat    = Number(riderData.location.battery ?? 100);
@@ -761,7 +700,6 @@ export default function WatcherDashboard() {
               );
             })}
 
-            {/* Offline riders */}
             {offlineRiders.map(([riderId, riderData]) => {
               const name = riderData.location?.name || riderId;
               const lon  = riderData.location.lon ?? riderData.location.lng;
@@ -772,14 +710,12 @@ export default function WatcherDashboard() {
               );
             })}
 
-            {/* Geofences */}
             {geofences.map((zone) => (
               <Circle key={zone.id} center={[zone.lat, zone.lng]} radius={zone.radiusKm * 1000} fillColor="blue" fillOpacity={0.1} color="blue">
                 <Popup>{zone.name}</Popup>
               </Circle>
             ))}
 
-            {/* Charging Stations */}
             {chargingStations.map((s) => (
               <Marker key={s.id} position={[s.lat, s.lon]} icon={createChargingIcon()}>
                 <Popup>
@@ -799,23 +735,25 @@ export default function WatcherDashboard() {
 
         {/* Alerts panel */}
         <div>
-          <h3>Recent Alerts</h3>
+          <h3 style={{ margin: '0 0 12px', color: '#fff' }}>Recent Alerts</h3>
 
-          {/* Reminder sent feedback */}
-          {Object.entries(reminderStatus).map(([key, status]) => (
-            <div key={key} style={{
-              padding: '8px 12px', marginBottom: '6px', borderRadius: '6px', fontSize: '13px',
-              background: status === 'sent' ? '#d4edda' : status === 'error' ? '#f8d7da' : '#fff3cd',
-              border: `1px solid ${status === 'sent' ? '#28a745' : status === 'error' ? '#dc3545' : '#ffc107'}`,
-            }}>
-              {status === 'sending' && '⏳ Sending reminder...'}
-              {status === 'sent'    && '✓ Reminder sent to rider'}
-              {status === 'error'   && '✕ Failed to send — check connection'}
-            </div>
-          ))}
+          <div className="watcher-reminder-strip">
+            {Object.entries(reminderStatus).map(([key, status]) => (
+              <div key={key} style={{
+                padding: '8px 12px', borderRadius: '6px', fontSize: '13px',
+                background: status === 'sent' ? '#1a3d1a' : status === 'error' ? '#3d1a1a' : '#3d3200',
+                border: `1px solid ${status === 'sent' ? '#28a745' : status === 'error' ? '#dc3545' : '#ffc107'}`,
+                color: status === 'sent' ? '#c8e6c9' : status === 'error' ? '#ffcdd2' : '#ffe082',
+              }}>
+                {status === 'sending' && '⏳ Sending reminder...'}
+                {status === 'sent'    && '✓ Reminder sent to rider'}
+                {status === 'error'   && '✕ Failed to send — check connection'}
+              </div>
+            ))}
+          </div>
 
-          <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
-            {!alerts.length && <p style={{ color: '#999', fontSize: '14px' }}>No alerts yet.</p>}
+          <div className="watcher-alerts-scroll">
+            {!alerts.length && <p style={{ color: '#666', fontSize: '14px' }}>No alerts yet.</p>}
             {alerts.map((alert) => (
               <AlertItem
                 key={alert.id}
@@ -830,11 +768,15 @@ export default function WatcherDashboard() {
 
       {/* Trip history */}
       <div>
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', alignItems: 'center' }}>
-          <h3 style={{ margin: 0 }}>📊 Trip History</h3>
-          <select id="filter-days" name="filter-days" value={filterDays}
+        <div className="watcher-trip-header">
+          <h3 style={{ margin: 0, color: '#fff' }}>📊 Trip History</h3>
+          <select
+            id="filter-days"
+            name="filter-days"
+            value={filterDays}
             onChange={(e) => setFilterDays(Number(e.target.value))}
-            style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '14px' }}>
+            style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #444', fontSize: '14px', background: '#2a2a2a', color: '#e0e0e0' }}
+          >
             <option value={7}>Last 7 days</option>
             <option value={30}>Last 30 days</option>
             <option value={365}>All time</option>
@@ -855,8 +797,8 @@ export default function WatcherDashboard() {
           <div className="modal-overlay" onClick={() => setSelectedTrip(null)}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h2>{selectedTrip.riderName || selectedTrip.riderId}</h2>
-                <button onClick={() => setSelectedTrip(null)} style={{ background: '#f0f0f0', border: 'none', fontSize: '20px', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px' }}>✕</button>
+                <h2 style={{ margin: 0, color: '#fff' }}>{selectedTrip.riderName || selectedTrip.riderId}</h2>
+                <button onClick={() => setSelectedTrip(null)} style={{ background: '#2a2a2a', border: '1px solid #444', color: '#ccc', fontSize: '20px', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px' }}>✕</button>
               </div>
               <TripSummaryCard trip={tripForCard} riderId={selectedTrip.riderId} />
               <CoachingTipCard ecoScore={selectedTrip.score} tripData={selectedTrip} riderId={selectedTrip.riderId} watcherId="parent" />
