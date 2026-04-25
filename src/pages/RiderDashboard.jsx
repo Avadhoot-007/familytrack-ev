@@ -27,7 +27,8 @@ const BATTERY_LOW      = 25;
 const DRAIN_BASELINE_WH_KM = 37;
 const DRAIN_ALERT_RATIO    = 1.20;
 
-export default function RiderDashboard({ riderName }) {
+// ── FIX: accepts isActive prop — pauses GPS when on watcher tab ──────────────
+export default function RiderDashboard({ riderName, isActive = true }) {
   const [isSharing, setIsSharing]               = useState(false);
   const [battery, setBattery]                   = useState(85);
   const [location, setLocation]                 = useState(null);
@@ -196,8 +197,17 @@ export default function RiderDashboard({ riderName }) {
     return () => clearInterval(interval);
   }, [isSharing]);
 
+  // ── FIX: GPS useEffect — pauses when isActive is false ──────────────────────
   useEffect(() => {
-    if (!isSharing) return;
+    // Stop GPS if not sharing OR if the rider tab is hidden (watcher tab active)
+    if (!isSharing || !isActive) {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      return;
+    }
+
     if (!navigator.geolocation) { setError('Geolocation not supported'); return; }
 
     const id = navigator.geolocation.watchPosition(
@@ -206,12 +216,10 @@ export default function RiderDashboard({ riderName }) {
         setLocation({ latitude, longitude, accuracy });
         setError(null);
 
-        // Accumulate route point
         const newPoint = [latitude, longitude];
         routePointsRef.current = [...routePointsRef.current, newPoint];
         setRoutePoints([...routePointsRef.current]);
 
-        // Write route to Firebase — every 5th point or first 2 to reduce writes
         const len = routePointsRef.current.length;
         if (len <= 2 || len % 5 === 0) {
           set(ref(db, `riders/${riderId}/currentRoute`), routePointsRef.current)
@@ -241,8 +249,12 @@ export default function RiderDashboard({ riderName }) {
     );
 
     watchIdRef.current = id;
-    return () => { navigator.geolocation.clearWatch(id); watchIdRef.current = null; };
-  }, [isSharing, riderName, riderId]);
+    return () => {
+      navigator.geolocation.clearWatch(id);
+      watchIdRef.current = null;
+    };
+  // ── isActive added to deps ───────────────────────────────────────────────
+  }, [isSharing, isActive, riderName, riderId]);
 
   const _doStartSharing = () => {
     setIsSharing(true);
@@ -263,7 +275,6 @@ export default function RiderDashboard({ riderName }) {
     startBatteryRef.current = battery;
     tripStartTimeRef.current = Date.now();
     lastLocationRef.current = null;
-    // Clear any stale route in Firebase
     set(ref(db, `riders/${riderId}/currentRoute`), null).catch(() => {});
   };
 
@@ -288,7 +299,6 @@ export default function RiderDashboard({ riderName }) {
     const finalAvgSpeed = tripDuration > 0 && tripDistance > 0
       ? parseFloat((tripDistance / (tripDuration / 3600)).toFixed(1)) : 0;
 
-    // Capture route before clearing
     const finalRoute = routePointsRef.current.length > 0
       ? [...routePointsRef.current]
       : [];
@@ -324,7 +334,6 @@ export default function RiderDashboard({ riderName }) {
       await set(ref(db, `riders/${riderId}/profile`), { name: riderName });
       await set(ref(db, `riders/${riderId}/trips/${tripId}`), tripDataObj);
 
-      // Clear live route from Firebase now that it's saved to the trip
       set(ref(db, `riders/${riderId}/currentRoute`), null).catch(() => {});
       setRoutePoints([]);
       routePointsRef.current = [];
@@ -402,14 +411,12 @@ export default function RiderDashboard({ riderName }) {
         });
       }
 
-      // Generate a plausible simulated route around Pune
       const baseLat = 18.5204 + (Math.random() - 0.5) * 0.05;
       const baseLon = 73.8567 + (Math.random() - 0.5) * 0.05;
       const simulatedRoute = [];
-      const routeSteps = Math.min(readingsCount, 30); // cap points for Firebase
+      const routeSteps = Math.min(readingsCount, 30);
       for (let i = 0; i < routeSteps; i++) {
         const t = i / Math.max(routeSteps - 1, 1);
-        // Simple curved path simulation
         simulatedRoute.push([
           baseLat + (profile.distance / 111) * t * (1 + Math.sin(t * Math.PI) * 0.3),
           baseLon + (profile.distance / 111) * t * (0.5 + Math.cos(t * Math.PI) * 0.2),
@@ -490,7 +497,7 @@ export default function RiderDashboard({ riderName }) {
 
   const getDrainLabel = () => {
     if (!drainRate) return null;
-    if (drainRate > DRAIN_BASELINE_WH_KM * 1.3)            return { label: 'High Drain',     color: '#dc3545', icon: '🔴' };
+    if (drainRate > DRAIN_BASELINE_WH_KM * 1.3)               return { label: 'High Drain',     color: '#dc3545', icon: '🔴' };
     if (drainRate > DRAIN_BASELINE_WH_KM * DRAIN_ALERT_RATIO) return { label: 'Elevated Drain', color: '#ff9800', icon: '🟡' };
     return { label: 'Normal Drain', color: '#4CAF50', icon: '🟢' };
   };
@@ -663,13 +670,23 @@ export default function RiderDashboard({ riderName }) {
             </div>
           )}
 
-          {/* Live route point counter */}
           {isSharing && routePoints.length > 0 && (
             <div style={{
               fontSize: '12px', color: '#666', textAlign: 'center',
               marginBottom: '8px',
             }}>
               📍 {routePoints.length} route points recorded
+            </div>
+          )}
+
+          {/* GPS paused notice — shown when sharing but tab hidden */}
+          {isSharing && !isActive && (
+            <div style={{
+              padding: '8px 12px', marginBottom: '10px',
+              background: 'rgba(255,152,0,0.12)', border: '1px solid rgba(255,152,0,0.4)',
+              borderRadius: '6px', fontSize: '13px', color: '#ffcc80', textAlign: 'center',
+            }}>
+              ⏸️ GPS paused — switch back to Rider tab to resume
             </div>
           )}
 
