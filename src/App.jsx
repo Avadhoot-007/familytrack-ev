@@ -12,11 +12,7 @@ export default function App() {
   const [isHydrated, setIsHydrated] = useState(false);
   const [authReady, setAuthReady] = useState(false);
 
-  // ── Anonymous auth + trip hydration on mount ───────────────────────────
   useEffect(() => {
-    // Sign in anonymously so Firebase rules ($uid === $riderId) can be satisfied.
-    // We derive riderId from riderName in RiderDashboard, but auth must be
-    // established first so writes aren't rejected outright.
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         try {
@@ -92,9 +88,6 @@ export default function App() {
     );
   }
 
-  // Wait for both auth and trip hydration before rendering dashboards.
-  // This prevents any Firebase write from firing before uid is set,
-  // and ensures tripHistory is loaded into store before RiderDashboard mounts.
   if (!isHydrated || !authReady) {
     return (
       <div style={{
@@ -150,12 +143,12 @@ export default function App() {
       </div>
 
       {/*
-        RiderDashboard always mounted (display:none when watching) to preserve
-        GPS watcher, intervals, and Firebase sync across tab switches.
-        WatcherDashboard remounts fresh each time (key) for clean Leaflet init.
+        RiderDashboard stays mounted to preserve state,
+        but receives isActive=false when on watcher tab
+        so it can pause GPS tracking.
       */}
       <div style={{ display: view === 'rider' ? 'block' : 'none' }}>
-        <RiderDashboard riderName={riderName} />
+        <RiderDashboard riderName={riderName} isActive={view === 'rider'} />
       </div>
 
       {view === 'watcher' && <WatcherDashboard key="watcher-map" />}
