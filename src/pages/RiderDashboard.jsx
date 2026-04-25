@@ -42,6 +42,7 @@ export default function RiderDashboard({ riderName }) {
   const [tripData, setTripData]                 = useState(null);
   const [showTripSummary, setShowTripSummary]   = useState(false);
   const [isSimulating, setIsSimulating]         = useState(false);
+  const [routePoints, setRoutePoints]           = useState([]);
 
   const [toasts, setToasts]                     = useState([]);
   const [criticalModal, setCriticalModal]       = useState(false);
@@ -60,12 +61,10 @@ export default function RiderDashboard({ riderName }) {
   const watchIdRef          = useRef(null);
   const lastLocationRef     = useRef(null);
   const tripStartTimeRef    = useRef(null);
+  const routePointsRef      = useRef([]);
 
   const lowToastShownRef      = useRef(false);
   const criticalToastShownRef = useRef(false);
-
-  // FIX: track whether the critical modal was already shown for current battery level
-  // so the battery useEffect doesn't re-open it after "Ride Anyway" closes it
   const criticalModalShownForBatteryRef = useRef(false);
 
   const tripHistory         = useStore((s) => s.tripHistory);
@@ -88,9 +87,6 @@ export default function RiderDashboard({ riderName }) {
 
   const removeToast = (id) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
-  // ── Battery level watcher — only fires DURING an active trip ─────────────
-  // FIX: added `isSharing` guard so this never fires on the initial start flow.
-  // FIX: `criticalModalShownForBatteryRef` prevents re-opening after "Ride Anyway".
   useEffect(() => {
     if (!isSharing) return;
 
@@ -103,7 +99,6 @@ export default function RiderDashboard({ riderName }) {
     if (battery <= BATTERY_CRITICAL && !criticalToastShownRef.current) {
       criticalToastShownRef.current = true;
       addToast(`🚨 Critical battery (${battery}%)! Stop and charge immediately.`, 'critical', 0);
-      // Only open the modal if it hasn't already been acknowledged for this battery level
       if (!criticalModalShownForBatteryRef.current) {
         criticalModalShownForBatteryRef.current = true;
         setCriticalModal(true);
@@ -211,6 +206,18 @@ export default function RiderDashboard({ riderName }) {
         setLocation({ latitude, longitude, accuracy });
         setError(null);
 
+        // Accumulate route point
+        const newPoint = [latitude, longitude];
+        routePointsRef.current = [...routePointsRef.current, newPoint];
+        setRoutePoints([...routePointsRef.current]);
+
+        // Write route to Firebase — every 5th point or first 2 to reduce writes
+        const len = routePointsRef.current.length;
+        if (len <= 2 || len % 5 === 0) {
+          set(ref(db, `riders/${riderId}/currentRoute`), routePointsRef.current)
+            .catch((e) => console.error('Route write error:', e));
+        }
+
         if (lastLocationRef.current) {
           try {
             const distDelta = calculateDistance(
@@ -237,7 +244,6 @@ export default function RiderDashboard({ riderName }) {
     return () => { navigator.geolocation.clearWatch(id); watchIdRef.current = null; };
   }, [isSharing, riderName, riderId]);
 
-  // ── Core start logic — no modals, no guards ───────────────────────────────
   const _doStartSharing = () => {
     setIsSharing(true);
     setTripStarted(true);
@@ -248,26 +254,25 @@ export default function RiderDashboard({ riderName }) {
     setError(null);
     setDrainRate(null);
     setDrainAlert(false);
+    setRoutePoints([]);
+    routePointsRef.current = [];
     lowToastShownRef.current = false;
     criticalToastShownRef.current = false;
-    // FIX: mark critical modal as already handled so the battery useEffect
-    // doesn't re-open it the moment isSharing becomes true
     criticalModalShownForBatteryRef.current = true;
     stationsFetchedRef.current = false;
     startBatteryRef.current = battery;
     tripStartTimeRef.current = Date.now();
     lastLocationRef.current = null;
+    // Clear any stale route in Firebase
+    set(ref(db, `riders/${riderId}/currentRoute`), null).catch(() => {});
   };
 
-  // ── Start button handler ──────────────────────────────────────────────────
   const handleStartSharing = () => {
     if (battery <= BATTERY_BLOCK) {
       setStartBlockModal(true);
       return;
     }
     if (battery <= BATTERY_CRITICAL) {
-      // FIX: reset the ref so the modal shows fresh, but don't let the
-      // useEffect re-open it once the user dismisses or clicks Ride Anyway
       criticalModalShownForBatteryRef.current = false;
       setCriticalModal(true);
       return;
@@ -282,6 +287,11 @@ export default function RiderDashboard({ riderName }) {
 
     const finalAvgSpeed = tripDuration > 0 && tripDistance > 0
       ? parseFloat((tripDistance / (tripDuration / 3600)).toFixed(1)) : 0;
+
+    // Capture route before clearing
+    const finalRoute = routePointsRef.current.length > 0
+      ? [...routePointsRef.current]
+      : [];
 
     try {
       const tripId    = `trip-${Date.now()}`;
@@ -308,10 +318,16 @@ export default function RiderDashboard({ riderName }) {
         consumptionWh: consumptionRate,
         batteryUsedPercent: parseFloat(batteryUsedPercent.toFixed(1)),
         batteryRemaining: Math.max(0, parseFloat(batteryRemaining.toFixed(1))),
+        route: finalRoute,
       };
 
       await set(ref(db, `riders/${riderId}/profile`), { name: riderName });
       await set(ref(db, `riders/${riderId}/trips/${tripId}`), tripDataObj);
+
+      // Clear live route from Firebase now that it's saved to the trip
+      set(ref(db, `riders/${riderId}/currentRoute`), null).catch(() => {});
+      setRoutePoints([]);
+      routePointsRef.current = [];
 
       addCompletedTrip({
         riderName,
@@ -323,6 +339,7 @@ export default function RiderDashboard({ riderName }) {
         batteryUsedPercent: tripDataObj.batteryUsedPercent,
         worstAxis,
         timestamp:         tripDataObj.timestamp,
+        route:             finalRoute,
       });
 
       const tips = getCoachingTips(tripEcoScore, worstAxis, finalAvgSpeed, readings.map(r => r.throttle), tripDistance);
@@ -385,6 +402,20 @@ export default function RiderDashboard({ riderName }) {
         });
       }
 
+      // Generate a plausible simulated route around Pune
+      const baseLat = 18.5204 + (Math.random() - 0.5) * 0.05;
+      const baseLon = 73.8567 + (Math.random() - 0.5) * 0.05;
+      const simulatedRoute = [];
+      const routeSteps = Math.min(readingsCount, 30); // cap points for Firebase
+      for (let i = 0; i < routeSteps; i++) {
+        const t = i / Math.max(routeSteps - 1, 1);
+        // Simple curved path simulation
+        simulatedRoute.push([
+          baseLat + (profile.distance / 111) * t * (1 + Math.sin(t * Math.PI) * 0.3),
+          baseLon + (profile.distance / 111) * t * (0.5 + Math.cos(t * Math.PI) * 0.2),
+        ]);
+      }
+
       const tripStats    = calculateTripStats(simulatedReadings);
       const tripEcoScore = tripStats.avg;
       const worstAxis    = tripStats.worstAxis;
@@ -400,18 +431,19 @@ export default function RiderDashboard({ riderName }) {
         avgSpeedKmh: derivedSpeed, score: tripEcoScore,
         readingCount: simulatedReadings.length,
         durationSeconds: profile.duration,
-        startLat: 18.5204 + (Math.random() - 0.5) * 0.05,
-        startLon: 73.8567 + (Math.random() - 0.5) * 0.05,
+        startLat: baseLat,
+        startLon: baseLon,
         worstAxis, rideStyle: profile.style,
         consumptionWh: consumptionRate,
         batteryUsedPercent: parseFloat(batteryUsedPercent.toFixed(1)),
         batteryRemaining: parseFloat(newBattery.toFixed(1)),
         isSimulated: true,
+        route: simulatedRoute,
       };
 
       await set(ref(db, `riders/${riderId}/profile`), { name: riderName });
-     const simTripId = `sim-${Date.now()}`;
-await set(ref(db, `riders/${riderId}/trips/${simTripId}`), tripDataObj);
+      const simTripId = `sim-${Date.now()}`;
+      await set(ref(db, `riders/${riderId}/trips/${simTripId}`), tripDataObj);
 
       setBattery(newBattery);
       batteryRef.current = newBattery;
@@ -426,6 +458,7 @@ await set(ref(db, `riders/${riderId}/trips/${simTripId}`), tripDataObj);
         batteryUsedPercent: tripDataObj.batteryUsedPercent,
         worstAxis,
         timestamp:         tripDataObj.timestamp,
+        route:             simulatedRoute,
       });
 
       const tips = getCoachingTips(tripEcoScore, worstAxis, derivedSpeed, simulatedReadings.map(r => r.throttle), profile.distance);
@@ -553,7 +586,6 @@ await set(ref(db, `riders/${riderId}/trips/${simTripId}`), tripDataObj);
                 <button
                   className="battery-modal-btn"
                   onClick={() => {
-                    // FIX: close modal first, then start — single action, no re-trigger
                     setCriticalModal(false);
                     _doStartSharing();
                   }}
@@ -628,6 +660,16 @@ await set(ref(db, `riders/${riderId}/trips/${simTripId}`), tripDataObj);
             <div className="trip-timer">
               <p className="timer-label">⏱️ Trip Duration</p>
               <p className="timer-value">{formatDuration(tripDuration)}</p>
+            </div>
+          )}
+
+          {/* Live route point counter */}
+          {isSharing && routePoints.length > 0 && (
+            <div style={{
+              fontSize: '12px', color: '#666', textAlign: 'center',
+              marginBottom: '8px',
+            }}>
+              📍 {routePoints.length} route points recorded
             </div>
           )}
 
