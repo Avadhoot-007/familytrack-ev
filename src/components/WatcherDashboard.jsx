@@ -18,7 +18,6 @@ const getRiderColor = (index) => RIDER_COLORS[index % RIDER_COLORS.length];
 const validCoords = (lat, lon) =>
   lat != null && lon != null && !isNaN(Number(lat)) && !isNaN(Number(lon));
 
-// Validate a route array — must be array of [lat, lon] pairs with valid numbers
 const validRoute = (route) =>
   Array.isArray(route) &&
   route.length >= 2 &&
@@ -57,7 +56,6 @@ const BATTERY_LOW      = 25;
 const DRAIN_BASELINE   = 37;
 const DRAIN_ALERT_RATIO = 1.20;
 
-// ── Weather helpers ──────────────────────────────────────────────────────────
 const OWM_KEY = import.meta.env.VITE_OPENWEATHER_API_KEY;
 const RAIN_CODES = new Set([
   200,201,202,210,211,212,221,230,231,232,
@@ -328,7 +326,6 @@ const REMINDER_TIPS = {
   },
 };
 
-// ── Route legend component ────────────────────────────────────────────────────
 function RouteLegend({ riders, riderColorMap }) {
   const onlineWithRoutes = Object.entries(riders).filter(([riderId, r]) => {
     const route = r.currentRoute;
@@ -375,7 +372,6 @@ export default function WatcherDashboard() {
   const [chargingStations, setChargingStations] = useState([]);
   const chargingFetchedRef                    = useRef(false);
 
-  // ── Route display toggle ──────────────────────────────────────────────────
   const [showRoutes, setShowRoutes]           = useState(true);
 
   const batteryAlertedRef = useRef({});
@@ -647,6 +643,7 @@ export default function WatcherDashboard() {
     }
   };
 
+  // FIX: recenter uses firstOnlineRider or falls back to defaultCenter
   const handleRecenterMap = () => {
     if (!mapRef.current) return;
     if (firstOnlineRider && validCoords(firstOnlineRider.lat, firstOnlineRider.lon)) {
@@ -656,14 +653,24 @@ export default function WatcherDashboard() {
     }
   };
 
-  // ── Fit map to all online riders ──────────────────────────────────────────
+  // FIX: fitAll uses ALL riders with valid coords, not just online ones
   const handleFitAll = () => {
-    if (!mapRef.current || !onlineRiders.length) return;
-    const bounds = onlineRiders.map(([, r]) => [r.location.lat, r.location.lon ?? r.location.lng]);
-    if (bounds.length === 1) {
-      mapRef.current.setView(bounds[0], 14);
+    if (!mapRef.current) return;
+
+    const allWithCoords = Object.entries(riders)
+      .filter(([, r]) => r.location && validCoords(r.location.lat, r.location.lon ?? r.location.lng))
+      .map(([, r]) => [Number(r.location.lat), Number(r.location.lon ?? r.location.lng)]);
+
+    if (!allWithCoords.length) {
+      // No riders at all — go to default
+      mapRef.current.setView(defaultCenter, 13);
+      return;
+    }
+
+    if (allWithCoords.length === 1) {
+      mapRef.current.setView(allWithCoords[0], 14);
     } else {
-      mapRef.current.fitBounds(bounds, { padding: [40, 40] });
+      mapRef.current.fitBounds(allWithCoords, { padding: [50, 50] });
     }
   };
 
@@ -712,15 +719,21 @@ export default function WatcherDashboard() {
       {/* Map + Alerts grid */}
       <div className="watcher-map-alerts-grid">
         <div className="map-wrapper">
-          {/* Map controls row */}
+
+          {/* FIX: buttons container — column flex, no position:absolute on buttons themselves */}
           <div style={{
-            position: 'absolute', bottom: '15px', right: '15px',
-            zIndex: 1000, display: 'flex', gap: '8px',
+            position: 'absolute',
+            bottom: '15px',
+            right: '15px',
+            zIndex: 1000,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '6px',
           }}>
-            <button onClick={handleFitAll} className="recenter-btn" title="Fit all riders">
+            <button onClick={handleFitAll} className="recenter-btn" title="Zoom to show all riders">
               🗺️ Fit All
             </button>
-            <button onClick={handleRecenterMap} className="recenter-btn" title="Recenter map">
+            <button onClick={handleRecenterMap} className="recenter-btn" title="Recenter on first online rider">
               📍 Recenter
             </button>
           </div>
@@ -754,7 +767,7 @@ export default function WatcherDashboard() {
             />
             <MapController onMapReady={handleMapReady} />
 
-            {/* ── LIVE route polylines (currentRoute) ─────────────────────── */}
+            {/* Live route polylines */}
             {showRoutes && onlineRiders.map(([riderId, riderData]) => {
               const route = riderData.currentRoute;
               if (!validRoute(route)) return null;
@@ -763,20 +776,13 @@ export default function WatcherDashboard() {
                 <Polyline
                   key={`route-live-${riderId}`}
                   positions={route}
-                  pathOptions={{
-                    color,
-                    weight: 4,
-                    opacity: 0.85,
-                    lineJoin: 'round',
-                    lineCap: 'round',
-                  }}
+                  pathOptions={{ color, weight: 4, opacity: 0.85, lineJoin: 'round', lineCap: 'round' }}
                 />
               );
             })}
 
-            {/* ── Last completed trip route (dimmer) ──────────────────────── */}
+            {/* Last completed trip route (dimmer) */}
             {showRoutes && Object.entries(riders).map(([riderId, riderData]) => {
-              // Only show for offline riders (trip just ended) or as historical trail
               if (riderData.status === 'online') return null;
               const trips = riderData.trips ? Object.values(riderData.trips) : [];
               if (!trips.length) return null;
@@ -787,18 +793,12 @@ export default function WatcherDashboard() {
                 <Polyline
                   key={`route-last-${riderId}`}
                   positions={lastTrip.route}
-                  pathOptions={{
-                    color,
-                    weight: 3,
-                    opacity: 0.4,
-                    dashArray: '6 8',
-                    lineJoin: 'round',
-                  }}
+                  pathOptions={{ color, weight: 3, opacity: 0.4, dashArray: '6 8', lineJoin: 'round' }}
                 />
               );
             })}
 
-            {/* ── Online rider markers ─────────────────────────────────────── */}
+            {/* Online rider markers */}
             {onlineRiders.map(([riderId, riderData]) => {
               const hasSOS = riderData.sosTriggered && !riderData.sosResolved;
               const bat    = Number(riderData.location.battery ?? 100);
@@ -823,7 +823,7 @@ export default function WatcherDashboard() {
               );
             })}
 
-            {/* ── Offline rider markers ────────────────────────────────────── */}
+            {/* Offline rider markers */}
             {offlineRiders.map(([riderId, riderData]) => {
               const name = riderData.location?.name || riderId;
               const lon  = riderData.location.lon ?? riderData.location.lng;
@@ -834,14 +834,14 @@ export default function WatcherDashboard() {
               );
             })}
 
-            {/* ── Geofences ───────────────────────────────────────────────── */}
+            {/* Geofences */}
             {geofences.map((zone) => (
               <Circle key={zone.id} center={[zone.lat, zone.lng]} radius={zone.radiusKm * 1000} fillColor="blue" fillOpacity={0.1} color="blue">
                 <Popup>{zone.name}</Popup>
               </Circle>
             ))}
 
-            {/* ── Charging stations ────────────────────────────────────────── */}
+            {/* Charging stations */}
             {chargingStations.map((s) => (
               <Marker key={s.id} position={[s.lat, s.lon]} icon={createChargingIcon()}>
                 <Popup>
@@ -858,7 +858,6 @@ export default function WatcherDashboard() {
             ))}
           </MapContainer>
 
-          {/* Route legend — inside map wrapper, above map */}
           {showRoutes && <RouteLegend riders={riders} riderColorMap={riderColorMap} />}
         </div>
 

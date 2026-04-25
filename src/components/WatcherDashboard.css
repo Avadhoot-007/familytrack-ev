@@ -4,7 +4,6 @@
   position: relative;
   border-radius: 8px;
   overflow: hidden;
-  /* FIX: explicit stacking context so children can escape Leaflet's z-index layers */
   isolation: isolate;
 }
 
@@ -19,24 +18,22 @@
   width: 100% !important;
 }
 
-/* Recenter button — FIX: z-index raised to 1000 to clear Leaflet's tile/overlay panes */
+/* FIX: removed position:absolute/bottom/right — parent div handles placement */
 .recenter-btn {
-  position: absolute;
-  bottom: 15px;
-  right: 15px;
   z-index: 1000;
-  padding: 10px 16px;
+  padding: 8px 14px;
   background: #2196f3;
   border: none;
   border-radius: 6px;
   cursor: pointer;
   font-weight: bold;
-  font-size: 13px;
+  font-size: 12px;
   color: white;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
   transition: background 0.15s, box-shadow 0.15s, transform 0.15s;
   font-family: Arial, sans-serif;
   pointer-events: auto;
+  white-space: nowrap;
 }
 
 .recenter-btn:hover {
@@ -266,13 +263,11 @@
    WATCHER DASHBOARD — MOBILE OPTIMIZATION
    ============================================ */
 
-/* Watcher top-level layout wrapper */
 .watcher-dashboard {
   padding: 20px;
   font-family: Arial, sans-serif;
 }
 
-/* Map + alerts two-column grid → single column on mobile */
 .watcher-map-alerts-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -280,7 +275,6 @@
   margin-bottom: 30px;
 }
 
-/* Trip history header row */
 .watcher-trip-header {
   display: flex;
   gap: 10px;
@@ -289,7 +283,6 @@
   flex-wrap: wrap;
 }
 
-/* Rider status pill container */
 .watcher-pills-container {
   display: flex;
   gap: 8px;
@@ -297,7 +290,6 @@
   margin-bottom: 16px;
 }
 
-/* Reminder status feedback strip */
 .watcher-reminder-strip {
   display: flex;
   flex-direction: column;
@@ -305,13 +297,11 @@
   margin-bottom: 8px;
 }
 
-/* Alert scroll container */
 .watcher-alerts-scroll {
   max-height: 380px;
   overflow-y: auto;
 }
 
-/* Trip stats summary grid */
 .watcher-stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -319,7 +309,6 @@
   margin-bottom: 20px;
 }
 
-/* Trip history table — hide less critical columns on small screens */
 .trip-col-distance,
 .trip-col-speed {
   /* visible by default */
@@ -331,24 +320,20 @@
     padding: 12px;
   }
 
-  /* Stack map and alerts vertically */
   .watcher-map-alerts-grid {
     grid-template-columns: 1fr;
     gap: 16px;
     margin-bottom: 20px;
   }
 
-  /* Shorter map on mobile */
   .map-wrapper {
     height: 280px;
   }
 
-  /* Alerts panel full height on mobile */
   .watcher-alerts-scroll {
     max-height: 260px;
   }
 
-  /* Trip header wraps */
   .watcher-trip-header {
     flex-direction: column;
     align-items: flex-start;
@@ -359,30 +344,25 @@
     width: 100%;
   }
 
-  /* Stats grid 2-col on tablet */
   .watcher-stats-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  /* Modal full-width on mobile */
   .modal-content {
     width: 95%;
     padding: 14px;
     max-height: 95vh;
   }
 
-  /* SOS modal full-width */
   .sos-modal-content {
     padding: 20px;
     width: 95%;
   }
 
-  /* Trip table — hide speed column */
   .trip-col-speed {
     display: none;
   }
 
-  /* Tighter table padding */
   .trip-table-wrapper th,
   .trip-table-wrapper td {
     padding: 8px 6px;
@@ -396,38 +376,30 @@
     padding: 8px;
   }
 
-  /* Even shorter map on phones */
   .map-wrapper {
     height: 240px;
     border-radius: 6px;
   }
 
-  /* Stats single column */
   .watcher-stats-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 8px;
   }
 
-  /* Trip table — also hide distance column */
   .trip-col-distance {
     display: none;
   }
 
-  /* Recenter button smaller */
   .recenter-btn {
-    padding: 8px 12px;
-    font-size: 12px;
-    bottom: 10px;
-    right: 10px;
+    padding: 6px 10px;
+    font-size: 11px;
   }
 
-  /* Pill font smaller */
   .rider-pill {
     font-size: 11px;
     padding: 3px 8px;
   }
 
-  /* SOS modal tighter */
   .sos-modal-content {
     padding: 16px;
     border-radius: 8px;
@@ -437,7 +409,6 @@
     font-size: 22px;
   }
 
-  /* Alert items tighter */
   .watcher-alerts-scroll {
     max-height: 220px;
   }
