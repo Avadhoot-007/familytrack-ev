@@ -2,30 +2,7 @@
   "rules": {
     "riders": {
       ".read": true,
-      "$riderId": {
-        ".write": "auth !== null",
-        "location": {
-          ".validate": "newData.hasChildren(['lat', 'lon', 'battery', 'timestamp'])"
-        },
-        "profile": {
-          ".validate": "newData.hasChildren(['name'])"
-        },
-        "trips": {
-          "$tripId": {
-            ".validate": "newData.hasChildren(['timestamp', 'distanceKm', 'score'])"
-          }
-        },
-        "tripHistory": {
-          "$tripId": {
-            ".write": "auth !== null"
-          }
-        },
-        "coachingTips": {
-          "$tipId": {
-            ".validate": "newData.hasChildren(['title', 'message', 'sentAt'])"
-          }
-        }
-      }
+      ".write": true
     },
     "families": {
       "$familyId": {
