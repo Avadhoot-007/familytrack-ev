@@ -10,21 +10,20 @@ import RiderDashboard from './pages/RiderDashboard';
 import WatcherDashboard from './pages/WatcherDashboardPage';
 import { hydrateTripsFromStorage, useStore } from './store';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
 const makeInviteCode = () =>
   Math.random().toString(36).substring(2, 8).toUpperCase();
 
 const slugify = (name) =>
   name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 
-// ── Family setup screen (Google flow only) ───────────────────────────────────
+// ── Family setup screen ───────────────────────────────────────────────────────
 
 function FamilySetup({ user, onDone }) {
-  const [step, setStep] = useState('choose'); // 'choose' | 'create' | 'join'
+  const [step, setStep] = useState('choose');
   const [role, setRole] = useState(null);
   const [code, setCode] = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
+  const [createdFamily, setCreatedFamily] = useState(null); // FIX: holds { familyId, role } for Continue button
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -57,8 +56,9 @@ function FamilySetup({ user, onDone }) {
         joinedAt: new Date().toISOString(),
       });
 
+      // FIX: store family data in state, show code to user — do NOT call onDone here
+      setCreatedFamily({ familyId, role });
       setGeneratedCode(newCode);
-      onDone({ familyId, role });
     } catch (e) {
       setError(e.message);
     } finally {
@@ -69,12 +69,12 @@ function FamilySetup({ user, onDone }) {
   const handleJoin = async () => {
     if (!role) { setError('Pick a role first.'); return; }
     const trimmed = code.trim().toUpperCase();
-    if (trimmed.length !== 6) { setError('Enter the 6-character code.'); return; }
+    if (trimmed.length !== 6) { setError('Enter the 6-character invite code.'); return; }
     setLoading(true);
     setError('');
     try {
       const inviteSnap = await get(ref(db, `invites/${trimmed}`));
-      if (!inviteSnap.exists()) { setError('Invalid code.'); setLoading(false); return; }
+      if (!inviteSnap.exists()) { setError('Invalid code — double-check and try again.'); setLoading(false); return; }
 
       const { familyId } = inviteSnap.val();
 
@@ -187,25 +187,34 @@ function FamilySetup({ user, onDone }) {
           <>
             <RoleSelector />
             {error && <div style={s.error}>{error}</div>}
+
+            {/* FIX: show code screen — Continue button calls onDone with stored createdFamily */}
             {generatedCode ? (
               <>
                 <p style={{ ...s.label, color: '#4CAF50' }}>Family created! Share this code:</p>
                 <div style={s.codebox}>
                   <div style={s.codeText}>{generatedCode}</div>
                   <p style={{ color: '#666', fontSize: '12px', margin: '8px 0 0' }}>
-                    Others join by entering this code
+                    Others join by entering this 6-character code
                   </p>
                 </div>
-                <button style={s.btn()} onClick={() => onDone(null)}>
+                <button
+                  style={s.btn()}
+                  onClick={() => onDone(createdFamily)}
+                >
                   Continue to Dashboard →
                 </button>
               </>
             ) : (
               <>
-                <button style={s.btn()} disabled={loading} onClick={handleCreate}>
+                <button
+                  style={{ ...s.btn(), opacity: loading ? 0.6 : 1 }}
+                  disabled={loading}
+                  onClick={handleCreate}
+                >
                   {loading ? '⏳ Creating...' : '✓ Create Family'}
                 </button>
-                <button style={s.ghost} onClick={() => setStep('choose')}>← Back</button>
+                <button style={s.ghost} onClick={() => { setStep('choose'); setError(''); setRole(null); }}>← Back</button>
               </>
             )}
           </>
@@ -214,19 +223,24 @@ function FamilySetup({ user, onDone }) {
         {step === 'join' && (
           <>
             <RoleSelector />
-            <span style={s.label}>Invite code:</span>
+            <span style={s.label}>Enter the 6-character invite code:</span>
             <input
               style={s.input}
               maxLength={6}
               placeholder="ABC123"
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
             />
             {error && <div style={s.error}>{error}</div>}
-            <button style={s.btn('#2196F3')} disabled={loading} onClick={handleJoin}>
+            <button
+              style={{ ...s.btn('#2196F3'), opacity: loading ? 0.6 : 1 }}
+              disabled={loading}
+              onClick={handleJoin}
+            >
               {loading ? '⏳ Joining...' : '🔗 Join Family'}
             </button>
-            <button style={s.ghost} onClick={() => setStep('choose')}>← Back</button>
+            <button style={s.ghost} onClick={() => { setStep('choose'); setError(''); setCode(''); setRole(null); }}>← Back</button>
           </>
         )}
       </div>
@@ -296,7 +310,6 @@ function AuthScreen({ onGuest, onGoogle, loading, error }) {
         <h1 style={s.title}>FamilyTrack EV</h1>
         <p style={s.sub}>Family safety for EV riders</p>
 
-        {/* Google sign-in features callout */}
         <div style={{ textAlign: 'left', marginBottom: '24px' }}>
           {[
             '🔒 Secure family groups',
@@ -353,7 +366,7 @@ function AuthScreen({ onGuest, onGoogle, loading, error }) {
 
 export default function App() {
   const [view, setView] = useState('rider');
-  const [authState, setAuthState] = useState('loading'); // 'loading' | 'unauthenticated' | 'authenticated' | 'needs-family'
+  const [authState, setAuthState] = useState('loading');
   const [googleUser, setGoogleUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
@@ -366,16 +379,13 @@ export default function App() {
   const storeIsGuest = useStore((s) => s.isGuest);
   const storeFamilyId = useStore((s) => s.familyId);
 
-  // Hydrate store once
   useEffect(() => {
     hydrateTripsFromStorage().then(() => setIsHydrated(true));
   }, []);
 
-  // Firebase auth state listener
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
-        // Check if we have a persisted guest session
         if (storeIsGuest && storeRiderName) {
           setAuthState('authenticated');
         } else {
@@ -384,13 +394,11 @@ export default function App() {
         return;
       }
 
-      // Anonymous user from old flow — sign out and show new auth screen
       if (user.isAnonymous) {
         setAuthState('unauthenticated');
         return;
       }
 
-      // Google user — check if they have a family
       setGoogleUser(user);
       try {
         const userSnap = await get(ref(db, `users/${user.uid}`));
@@ -404,7 +412,6 @@ export default function App() {
           });
           setAuthState('authenticated');
         } else {
-          // New Google user — needs family setup
           setAuthState('needs-family');
         }
       } catch (e) {
@@ -421,7 +428,6 @@ export default function App() {
     setAuthError('');
     try {
       await signInWithPopup(auth, googleProvider);
-      // onAuthStateChanged handles the rest
     } catch (e) {
       if (e.code !== 'auth/popup-closed-by-user') {
         setAuthError(e.message);
@@ -435,7 +441,9 @@ export default function App() {
     setAuthState('authenticated');
   };
 
-  const handleFamilyDone = ({ familyId, role } = {}) => {
+  // FIX: guard against null — onDone(null) no longer crashes
+  const handleFamilyDone = (data) => {
+    const { familyId, role } = data || {};
     if (familyId) {
       setGoogleUserStore({
         uid: googleUser.uid,
@@ -455,8 +463,6 @@ export default function App() {
       await signOut(auth);
     }
   };
-
-  // ── Render gates ────────────────────────────────────────────────────────
 
   if (authState === 'loading' || !isHydrated) {
     return (
@@ -485,8 +491,6 @@ export default function App() {
   if (authState === 'needs-family' && googleUser) {
     return <FamilySetup user={googleUser} onDone={handleFamilyDone} />;
   }
-
-  // ── Authenticated (guest or Google) ─────────────────────────────────────
 
   const riderName = storeRiderName || googleUser?.displayName || 'Rider';
 
@@ -562,7 +566,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Dashboards — RiderDashboard always mounted to preserve state */}
+      {/* RiderDashboard always mounted to preserve state */}
       <div style={{ display: view === 'rider' ? 'block' : 'none' }}>
         <RiderDashboard riderName={riderName} isActive={view === 'rider'} />
       </div>
