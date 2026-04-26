@@ -7,102 +7,110 @@ const STORAGE_KEY = 'familytrack-ev-store';
 export const useStore = create(
   persist(
     (set, get) => ({
-      // Auth — works for both Google and Guest flows
-      userId: null,       // Firebase uid (Google) or null (Guest)
-      riderName: null,    // display name
-      role: null,         // 'rider' | 'watcher' | null
-      familyId: null,     // set after family join/create (Google flow only)
-      isGuest: false,     // true when using name-based guest flow
+      // ── Auth ─────────────────────────────────────────────────────────────
+      userId:   null,
+      riderName: null,
+      role:     null,
+      familyId: null,
+      isGuest:  false,
 
       setAuth: (userId, riderName) => set({ userId, riderName }),
 
       setGoogleUser: ({ uid, displayName, familyId, role }) =>
         set({ userId: uid, riderName: displayName, familyId, role, isGuest: false }),
 
+      // Guests default to 'rider' — safest, nothing in app breaks
       setGuest: (name) =>
-        set({ riderName: name, isGuest: true, userId: null, familyId: null, role: null }),
+        set({ riderName: name, isGuest: true, userId: null, familyId: null, role: 'rider' }),
 
       setFamilyId: (familyId) => set({ familyId }),
-      setRole: (role) => set({ role }),
+      setRole: (role)         => set({ role }),
 
       clearAuth: () =>
         set({ userId: null, riderName: null, role: null, familyId: null, isGuest: false }),
 
-      // Current trip
-      isSharing: false,
+      // ── Current trip ──────────────────────────────────────────────────────
+      isSharing:    false,
       tripStartTime: null,
-      tripStats: { distanceKm: 0, avgSpeedKmh: 0, score: 0, worstAxis: null },
+      tripStats:    { distanceKm: 0, avgSpeedKmh: 0, score: 0, worstAxis: null },
 
-      setSharing: (isSharing) => set({ isSharing, tripStartTime: isSharing ? Date.now() : null }),
+      setSharing: (isSharing) =>
+        set({ isSharing, tripStartTime: isSharing ? Date.now() : null }),
       updateTripStats: (stats) => set({ tripStats: stats }),
 
-      // Battery
-      battery: 85,
+      // ── Battery ───────────────────────────────────────────────────────────
+      battery:    85,
       setBattery: (battery) => set({ battery }),
 
-      // Location
-      location: null,
+      // ── Location ──────────────────────────────────────────────────────────
+      location:    null,
       setLocation: (location) => set({ location }),
 
-      // Riders (for watcher)
-      riders: {},
+      // ── Riders (watcher) ─────────────────────────────────────────────────
+      riders:    {},
       setRiders: (riders) => set({ riders }),
 
-      // Alerts
-      alerts: [],
-      addAlert: (alert) => set((state) => ({ alerts: [alert, ...state.alerts].slice(0, 50) })),
+      // ── Alerts ───────────────────────────────────────────────────────────
+      alerts:   [],
+      addAlert: (alert) =>
+        set((state) => ({ alerts: [alert, ...state.alerts].slice(0, 50) })),
 
-      // Trip History
+      // ── Trip History ──────────────────────────────────────────────────────
       tripHistory: [],
 
-      addCompletedTrip: (trip) => set((state) => {
-        const newTrip = {
-          ...trip,
-          id: trip.id || `trip-${Date.now()}`,
-          timestamp: trip.timestamp || new Date().toISOString(),
-        };
-        const exists = state.tripHistory.some(t => t.timestamp === newTrip.timestamp);
-        if (exists) return {};
-        const updated = [...state.tripHistory, newTrip].slice(-100);
+      addCompletedTrip: (trip) =>
+        set((state) => {
+          const newTrip = {
+            ...trip,
+            id:        trip.id        || `trip-${Date.now()}`,
+            timestamp: trip.timestamp || new Date().toISOString(),
+          };
+          // Deduplicate by timestamp
+          const exists = state.tripHistory.some((t) => t.timestamp === newTrip.timestamp);
+          if (exists) return {};
 
-        const riderId = state.userId ||
-          state.riderName?.toLowerCase().replace(/\s+/g, '-') || null;
-        if (riderId) {
-          persistTripToFirebase(riderId, newTrip);
-        }
+          const updated = [...state.tripHistory, newTrip].slice(-100);
 
-        return { tripHistory: updated };
-      }),
+          const riderId =
+            state.userId ||
+            state.riderName?.toLowerCase().replace(/\s+/g, '-') ||
+            null;
+          if (riderId) persistTripToFirebase(riderId, newTrip);
+
+          return { tripHistory: updated };
+        }),
 
       setTripHistory: (trips) => set({ tripHistory: trips }),
 
-      removeTrip: (tripId) => set((state) => ({
-        tripHistory: state.tripHistory.filter(t => t.id !== tripId),
-      })),
+      removeTrip: (tripId) =>
+        set((state) => ({
+          tripHistory: state.tripHistory.filter((t) => t.id !== tripId),
+        })),
 
-      // Coaching Tips
+      // ── Coaching Tips ─────────────────────────────────────────────────────
       currentCoachingTips: [],
       setCoachingTips: (tips) => set({ currentCoachingTips: tips }),
 
-      // Impact Summary (cached)
+      // ── Impact Summary (cached) ───────────────────────────────────────────
       impactSummary: null,
       setImpactSummary: (summary) => set({ impactSummary: summary }),
     }),
     {
       name: STORAGE_KEY,
       partialize: (state) => ({
-        battery: state.battery,
-        riderName: state.riderName,
-        userId: state.userId,
-        familyId: state.familyId,
-        role: state.role,
-        isGuest: state.isGuest,
+        battery:     state.battery,
+        riderName:   state.riderName,
+        userId:      state.userId,
+        familyId:    state.familyId,
+        role:        state.role,
+        isGuest:     state.isGuest,
         tripHistory: state.tripHistory,
       }),
     }
   )
 );
 
+// ── Hydration ─────────────────────────────────────────────────────────────────
 export const hydrateTripsFromStorage = async () => {
   return new Promise((resolve) => {
     setTimeout(async () => {
@@ -115,8 +123,10 @@ export const hydrateTripsFromStorage = async () => {
         return;
       }
 
-      const riderId = state.userId ||
-        state.riderName?.toLowerCase().replace(/\s+/g, '-') || null;
+      const riderId =
+        state.userId ||
+        state.riderName?.toLowerCase().replace(/\s+/g, '-') ||
+        null;
 
       if (riderId) {
         const firebaseTrips = await loadTripsFromFirebase(riderId);

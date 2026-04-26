@@ -8,55 +8,56 @@ import { ref, get, set, push, update } from 'firebase/database';
 import { auth, db, googleProvider } from './config/firebase';
 import RiderDashboard from './pages/RiderDashboard';
 import WatcherDashboard from './pages/WatcherDashboardPage';
+import FamilyPanel from './components/FamilyPanel';
 import { hydrateTripsFromStorage, useStore } from './store';
 
 const makeInviteCode = () =>
   Math.random().toString(36).substring(2, 8).toUpperCase();
 
-const slugify = (name) =>
-  name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-
 // ── Family setup screen ───────────────────────────────────────────────────────
 
 function FamilySetup({ user, onDone }) {
-  const [step, setStep] = useState('choose');
-  const [role, setRole] = useState(null);
-  const [code, setCode] = useState('');
+  const [step, setStep]                   = useState('choose');
+  const [role, setRole]                   = useState(null);
+  const [code, setCode]                   = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
-  const [createdFamily, setCreatedFamily] = useState(null); // FIX: holds { familyId, role } for Continue button
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [createdFamily, setCreatedFamily] = useState(null);
+  const [error, setError]                 = useState('');
+  const [loading, setLoading]             = useState(false);
 
   const handleCreate = async () => {
     if (!role) { setError('Pick a role first.'); return; }
     setLoading(true);
     setError('');
     try {
-      const newCode = makeInviteCode();
+      const newCode  = makeInviteCode();
       const familyRef = push(ref(db, 'families'));
-      const familyId = familyRef.key;
+      const familyId  = familyRef.key;
 
+      // Write family node — include inviteCode so FamilyPanel can retrieve it
       await set(familyRef, {
-        createdBy: user.uid,
-        createdAt: new Date().toISOString(),
-        members: { [user.uid]: role },
+        createdBy:  user.uid,
+        createdAt:  new Date().toISOString(),
+        inviteCode: newCode,
+        members:    { [user.uid]: role },
       });
 
+      // Write invite lookup node
       await set(ref(db, `invites/${newCode}`), {
         familyId,
         createdBy: user.uid,
         createdAt: new Date().toISOString(),
       });
 
+      // Write user profile
       await set(ref(db, `users/${user.uid}`), {
         displayName: user.displayName,
-        email: user.email,
+        email:       user.email,
         familyId,
         role,
-        joinedAt: new Date().toISOString(),
+        joinedAt:    new Date().toISOString(),
       });
 
-      // FIX: store family data in state, show code to user — do NOT call onDone here
       setCreatedFamily({ familyId, role });
       setGeneratedCode(newCode);
     } catch (e) {
@@ -74,7 +75,11 @@ function FamilySetup({ user, onDone }) {
     setError('');
     try {
       const inviteSnap = await get(ref(db, `invites/${trimmed}`));
-      if (!inviteSnap.exists()) { setError('Invalid code — double-check and try again.'); setLoading(false); return; }
+      if (!inviteSnap.exists()) {
+        setError('Invalid code — double-check and try again.');
+        setLoading(false);
+        return;
+      }
 
       const { familyId } = inviteSnap.val();
 
@@ -82,10 +87,10 @@ function FamilySetup({ user, onDone }) {
 
       await set(ref(db, `users/${user.uid}`), {
         displayName: user.displayName,
-        email: user.email,
+        email:       user.email,
         familyId,
         role,
-        joinedAt: new Date().toISOString(),
+        joinedAt:    new Date().toISOString(),
       });
 
       onDone({ familyId, role });
@@ -108,9 +113,9 @@ function FamilySetup({ user, onDone }) {
       maxWidth: '420px', width: '100%',
       boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
     },
-    title: { color: '#fff', fontSize: '22px', fontWeight: '700', margin: '0 0 6px' },
-    sub: { color: '#888', fontSize: '13px', margin: '0 0 28px' },
-    label: { color: '#ccc', fontSize: '13px', fontWeight: '600', marginBottom: '10px', display: 'block' },
+    title:   { color: '#fff', fontSize: '22px', fontWeight: '700', margin: '0 0 6px' },
+    sub:     { color: '#888', fontSize: '13px', margin: '0 0 28px' },
+    label:   { color: '#ccc', fontSize: '13px', fontWeight: '600', marginBottom: '10px', display: 'block' },
     roleRow: { display: 'flex', gap: '10px', marginBottom: '20px' },
     roleBtn: (active) => ({
       flex: 1, padding: '14px', border: `2px solid ${active ? '#4CAF50' : '#333'}`,
@@ -188,7 +193,6 @@ function FamilySetup({ user, onDone }) {
             <RoleSelector />
             {error && <div style={s.error}>{error}</div>}
 
-            {/* FIX: show code screen — Continue button calls onDone with stored createdFamily */}
             {generatedCode ? (
               <>
                 <p style={{ ...s.label, color: '#4CAF50' }}>Family created! Share this code:</p>
@@ -198,10 +202,7 @@ function FamilySetup({ user, onDone }) {
                     Others join by entering this 6-character code
                   </p>
                 </div>
-                <button
-                  style={s.btn()}
-                  onClick={() => onDone(createdFamily)}
-                >
+                <button style={s.btn()} onClick={() => onDone(createdFamily)}>
                   Continue to Dashboard →
                 </button>
               </>
@@ -212,9 +213,14 @@ function FamilySetup({ user, onDone }) {
                   disabled={loading}
                   onClick={handleCreate}
                 >
-                  {loading ? '⏳ Creating...' : '✓ Create Family'}
+                  {loading ? '⏳ Creating…' : '✓ Create Family'}
                 </button>
-                <button style={s.ghost} onClick={() => { setStep('choose'); setError(''); setRole(null); }}>← Back</button>
+                <button
+                  style={s.ghost}
+                  onClick={() => { setStep('choose'); setError(''); setRole(null); }}
+                >
+                  ← Back
+                </button>
               </>
             )}
           </>
@@ -238,9 +244,14 @@ function FamilySetup({ user, onDone }) {
               disabled={loading}
               onClick={handleJoin}
             >
-              {loading ? '⏳ Joining...' : '🔗 Join Family'}
+              {loading ? '⏳ Joining…' : '🔗 Join Family'}
             </button>
-            <button style={s.ghost} onClick={() => { setStep('choose'); setError(''); setCode(''); setRole(null); }}>← Back</button>
+            <button
+              style={s.ghost}
+              onClick={() => { setStep('choose'); setError(''); setCode(''); setRole(null); }}
+            >
+              ← Back
+            </button>
           </>
         )}
       </div>
@@ -248,7 +259,7 @@ function FamilySetup({ user, onDone }) {
   );
 }
 
-// ── Auth / landing screen ────────────────────────────────────────────────────
+// ── Auth / landing screen ─────────────────────────────────────────────────────
 
 function AuthScreen({ onGuest, onGoogle, loading, error }) {
   const [name, setName] = useState('');
@@ -266,9 +277,9 @@ function AuthScreen({ onGuest, onGoogle, loading, error }) {
       boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
       textAlign: 'center',
     },
-    icon: { fontSize: '48px', marginBottom: '12px' },
-    title: { color: '#fff', fontSize: '26px', fontWeight: '700', margin: '0 0 6px' },
-    sub: { color: '#666', fontSize: '13px', margin: '0 0 32px' },
+    icon:    { fontSize: '48px', marginBottom: '12px' },
+    title:   { color: '#fff', fontSize: '26px', fontWeight: '700', margin: '0 0 6px' },
+    sub:     { color: '#666', fontSize: '13px', margin: '0 0 32px' },
     divider: {
       display: 'flex', alignItems: 'center', gap: '12px',
       margin: '20px 0', color: '#444', fontSize: '12px',
@@ -333,7 +344,7 @@ function AuthScreen({ onGuest, onGoogle, loading, error }) {
             <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/>
             <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/>
           </svg>
-          {loading ? 'Signing in...' : 'Continue with Google'}
+          {loading ? 'Signing in…' : 'Continue with Google'}
         </button>
 
         <div style={s.divider}>
@@ -345,7 +356,7 @@ function AuthScreen({ onGuest, onGoogle, loading, error }) {
         <input
           style={s.input}
           type="text"
-          placeholder="Enter your name..."
+          placeholder="Enter your name…"
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && name.trim() && onGuest(name)}
@@ -362,31 +373,39 @@ function AuthScreen({ onGuest, onGoogle, loading, error }) {
   );
 }
 
-// ── Main App ─────────────────────────────────────────────────────────────────
+// ── Main App ──────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [view, setView] = useState('rider');
+  const [view, setView]           = useState('rider');
   const [authState, setAuthState] = useState('loading');
   const [googleUser, setGoogleUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
-  const [authError, setAuthError] = useState('');
+  const [authError, setAuthError]   = useState('');
   const [isHydrated, setIsHydrated] = useState(false);
 
+  // Read from store — stable selectors (no destructuring)
   const setGoogleUserStore = useStore((s) => s.setGoogleUser);
-  const setGuest = useStore((s) => s.setGuest);
-  const clearAuth = useStore((s) => s.clearAuth);
-  const storeRiderName = useStore((s) => s.riderName);
-  const storeIsGuest = useStore((s) => s.isGuest);
-  const storeFamilyId = useStore((s) => s.familyId);
+  const setGuest           = useStore((s) => s.setGuest);
+  const clearAuth          = useStore((s) => s.clearAuth);
+  const storeRiderName     = useStore((s) => s.riderName);
+  const storeIsGuest       = useStore((s) => s.isGuest);
+  const storeFamilyId      = useStore((s) => s.familyId);
+  const storeRole          = useStore((s) => s.role);
+  const storeUserId        = useStore((s) => s.userId);
 
+  // ── Hydration ────────────────────────────────────────────────────────────
   useEffect(() => {
     hydrateTripsFromStorage().then(() => setIsHydrated(true));
   }, []);
 
+  // ── Auth state listener ──────────────────────────────────────────────────
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
+      // No Firebase user
       if (!user) {
-        if (storeIsGuest && storeRiderName) {
+        // Check store snapshot directly — avoids stale closure
+        const { isGuest, riderName } = useStore.getState();
+        if (isGuest && riderName) {
           setAuthState('authenticated');
         } else {
           setAuthState('unauthenticated');
@@ -394,6 +413,7 @@ export default function App() {
         return;
       }
 
+      // Anonymous — treat as unauthenticated
       if (user.isAnonymous) {
         setAuthState('unauthenticated');
         return;
@@ -405,10 +425,10 @@ export default function App() {
         if (userSnap.exists()) {
           const userData = userSnap.val();
           setGoogleUserStore({
-            uid: user.uid,
+            uid:         user.uid,
             displayName: user.displayName,
-            familyId: userData.familyId,
-            role: userData.role,
+            familyId:    userData.familyId || null,
+            role:        userData.role     || null,
           });
           setAuthState('authenticated');
         } else {
@@ -420,14 +440,16 @@ export default function App() {
       }
     });
     return () => unsub();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — reads store snapshot inside handler
 
+  // ── Handlers ─────────────────────────────────────────────────────────────
   const handleGoogle = async () => {
     setAuthLoading(true);
     setAuthError('');
     try {
       await signInWithPopup(auth, googleProvider);
+      // onAuthStateChanged fires next — no need to set state here
     } catch (e) {
       if (e.code !== 'auth/popup-closed-by-user') {
         setAuthError(e.message);
@@ -437,16 +459,18 @@ export default function App() {
   };
 
   const handleGuest = (name) => {
-    setGuest(name.trim());
+    setGuest(name.trim()); // role defaults to 'rider' in store
     setAuthState('authenticated');
   };
 
-  // FIX: guard against null — onDone(null) no longer crashes
+  // FamilySetup calls this after create or join
   const handleFamilyDone = (data) => {
-    const { familyId, role } = data || {};
-    if (familyId) {
+    if (!data) { setAuthState('authenticated'); return; }
+    const { familyId, role } = data;
+    // Only update store if we actually have valid data
+    if (familyId && role && googleUser) {
       setGoogleUserStore({
-        uid: googleUser.uid,
+        uid:         googleUser.uid,
         displayName: googleUser.displayName,
         familyId,
         role,
@@ -456,14 +480,23 @@ export default function App() {
   };
 
   const handleSignOut = async () => {
-    clearAuth();
-    setGoogleUser(null);
-    setAuthState('unauthenticated');
-    if (auth.currentUser && !auth.currentUser.isAnonymous) {
-      await signOut(auth);
+    // Sign out from Firebase first, then clear store
+    // This order prevents the auth listener from seeing a cleared store
+    // and incorrectly routing to 'unauthenticated' before sign-out completes
+    try {
+      if (auth.currentUser && !auth.currentUser.isAnonymous) {
+        await signOut(auth);
+      }
+    } catch (e) {
+      console.error('Sign out error:', e);
+    } finally {
+      clearAuth();
+      setGoogleUser(null);
+      setAuthState('unauthenticated');
     }
   };
 
+  // ── Loading screen ───────────────────────────────────────────────────────
   if (authState === 'loading' || !isHydrated) {
     return (
       <div style={{
@@ -472,7 +505,7 @@ export default function App() {
         fontFamily: 'Arial', color: '#fff', flexDirection: 'column', gap: '16px',
       }}>
         <div style={{ fontSize: '48px' }}>🚴</div>
-        <p style={{ color: '#666', fontSize: '14px' }}>Loading FamilyTrack EV...</p>
+        <p style={{ color: '#666', fontSize: '14px' }}>Loading FamilyTrack EV…</p>
       </div>
     );
   }
@@ -494,13 +527,16 @@ export default function App() {
 
   const riderName = storeRiderName || googleUser?.displayName || 'Rider';
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={{ fontFamily: 'Arial' }}>
-      {/* Header */}
+
+      {/* ── Header ─────────────────────────────────────────────────────── */}
       <div style={{
         padding: '12px 20px', background: '#1a1d27',
         borderBottom: '1px solid #2a2d3a',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        flexWrap: 'wrap', gap: '8px',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ fontSize: '22px' }}>🚴</span>
@@ -527,31 +563,32 @@ export default function App() {
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Rider tab */}
           <button
             onClick={() => setView('rider')}
-            style={{
-              padding: '7px 14px', fontSize: '13px',
-              background: view === 'rider' ? '#4CAF50' : '#2a2d3a',
-              color: view === 'rider' ? 'white' : '#888',
-              border: 'none', borderRadius: '6px', cursor: 'pointer',
-              fontWeight: view === 'rider' ? 'bold' : 'normal',
-            }}
+            style={tabStyle(view === 'rider', '#4CAF50')}
           >
             👤 Rider
           </button>
+
+          {/* Watcher tab */}
           <button
             onClick={() => setView('watcher')}
-            style={{
-              padding: '7px 14px', fontSize: '13px',
-              background: view === 'watcher' ? '#2196F3' : '#2a2d3a',
-              color: view === 'watcher' ? 'white' : '#888',
-              border: 'none', borderRadius: '6px', cursor: 'pointer',
-              fontWeight: view === 'watcher' ? 'bold' : 'normal',
-            }}
+            style={tabStyle(view === 'watcher', '#2196F3')}
           >
             👁️ Watcher
           </button>
+
+          {/* Family tab — always visible; useful for guests too (shows "no family" state) */}
+          <button
+            onClick={() => setView('family')}
+            style={tabStyle(view === 'family', '#ff9800')}
+          >
+            👨‍👩‍👧 Family
+          </button>
+
+          {/* Sign out */}
           <button
             onClick={handleSignOut}
             style={{
@@ -566,12 +603,38 @@ export default function App() {
         </div>
       </div>
 
-      {/* RiderDashboard always mounted to preserve state */}
+      {/* ── RiderDashboard — always mounted to preserve GPS/trip state ── */}
       <div style={{ display: view === 'rider' ? 'block' : 'none' }}>
         <RiderDashboard riderName={riderName} isActive={view === 'rider'} />
       </div>
 
+      {/* ── Watcher — unmount when hidden (map resets are fine) ─────── */}
       {view === 'watcher' && <WatcherDashboard key="watcher-map" />}
+
+      {/* ── Family panel ─────────────────────────────────────────────── */}
+      {view === 'family' && (
+        <FamilyPanel
+          familyId={storeFamilyId}
+          userId={storeUserId}
+          userRole={storeRole}
+          displayName={riderName}
+        />
+      )}
     </div>
   );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function tabStyle(active, activeColor) {
+  return {
+    padding: '7px 14px',
+    fontSize: '13px',
+    background: active ? activeColor : '#2a2d3a',
+    color: active ? 'white' : '#888',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontWeight: active ? 'bold' : 'normal',
+    transition: 'all 0.2s',
+  };
 }
