@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ref, push, set, onValue } from 'firebase/database';
 import { db } from '../config/firebase';
-import { generateCoachingTips, getTipIcon } from '../utils/coachingTips';
+import { generateCoachingTips, getTipIcon } from '../utils/Coachingtips';
 import './CoachingTipCard.css';
 
 export default function CoachingTipCard({ ecoScore, tripData, riderId, watcherId }) {
