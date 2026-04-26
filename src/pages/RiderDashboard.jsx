@@ -50,6 +50,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
 
   const [stations, setStations]                 = useState([]);
   const [stationsLoading, setStationsLoading]   = useState(false);
+  const [stationsError, setStationsError]       = useState(null);
   const [showStations, setShowStations]         = useState(false);
   const stationsFetchedRef                      = useRef(false);
 
@@ -113,13 +114,18 @@ export default function RiderDashboard({ riderName, isActive = true }) {
   // FIX: core fetch function — always fetches, no guard here
   const _doFetchStations = async (lat, lon) => {
     setStationsLoading(true);
+    setStationsError(null);
     try {
       const results = await fetchChargingStations(lat, lon, 3);
       setStations(results);
       stationsFetchedRef.current = true;
+      if (results.length === 0) {
+        setStationsError('No stations found within 12 km. Try a different location.');
+      }
     } catch (e) {
       console.error('Station fetch error:', e);
-      stationsFetchedRef.current = false; // allow retry on error
+      stationsFetchedRef.current = false; // allow retry
+      setStationsError(`Failed to fetch stations: ${e.message}`);
     } finally {
       setStationsLoading(false);
     }
@@ -524,6 +530,20 @@ export default function RiderDashboard({ riderName, isActive = true }) {
         </p>
       );
     }
+    if (stationsError) {
+      return (
+        <div style={{ marginTop: '8px' }}>
+          <p style={{ color: '#ff8a80', fontSize: '12px', margin: '0 0 8px' }}>⚠️ {stationsError}</p>
+          <button
+            className="battery-modal-btn battery-modal-btn-secondary"
+            style={{ width: '100%' }}
+            onClick={(e) => { e.stopPropagation(); handleFindStations(); }}
+          >
+            🔄 Retry
+          </button>
+        </div>
+      );
+    }
     if (stations.length === 0) {
       return (
         <button
@@ -793,11 +813,14 @@ export default function RiderDashboard({ riderName, isActive = true }) {
               <>
                 {stationsLoading && <p className="charging-loading">⏳ Fetching nearby stations...</p>}
 
-                {!stationsLoading && stations.length === 0 && (
+                {!stationsLoading && (stations.length === 0 || stationsError) && (
                   <div style={{ padding: '12px 16px' }}>
-                    <p className="charging-empty">No stations found. Try refreshing.</p>
+                    {stationsError
+                      ? <p className="charging-empty">⚠️ {stationsError}</p>
+                      : <p className="charging-empty">No stations found. Try refreshing.</p>
+                    }
                     <button
-                      onClick={handleFindStations}
+                      onClick={() => { setStationsError(null); handleFindStations(); }}
                       style={{
                         marginTop: '8px', padding: '7px 14px',
                         background: 'rgba(33,150,243,0.15)', border: '1px solid rgba(33,150,243,0.4)',
