@@ -138,8 +138,84 @@ function SOSAlertModal({ sosRider, onResolve, onClose }) {
             ? <a href={mapsUrl} target="_blank" rel="noreferrer" className="maps-btn">📍 Open in Google Maps</a>
             : <div style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', fontSize: '13px', color: '#999', textAlign: 'center', border: '1px solid #444' }}>📍 Location unavailable</div>}
           <button onClick={onResolve} className="resolve-btn">✓ Mark as Resolved</button>
-          <button onClick={onClose}   className="dismiss-btn">Dismiss (keep monitoring)</button>
+          {/* CHANGED: dismiss now passes the rider to onClose so parent can store it as pending */}
+          <button onClick={() => onClose(sosRider)} className="dismiss-btn">Dismiss (keep monitoring)</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// NEW: sticky banner shown in the alerts panel for each pending (dismissed but unresolved) SOS
+function PendingSOSBanner({ sosRider, onResolve, resolving }) {
+  const raw = sosRider.sosLocation;
+  const loc = raw ? { lat: raw.lat ?? raw.latitude ?? null, lon: raw.lon ?? raw.lng ?? raw.longitude ?? null } : null;
+  const hasCoords = loc && validCoords(loc.lat, loc.lon);
+  const mapsUrl = hasCoords ? `https://www.google.com/maps?q=${loc.lat},${loc.lon}` : null;
+  const name = sosRider.sosRiderName || sosRider.riderId;
+  const time = sosRider.sosTimestamp
+    ? new Date(sosRider.sosTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '—';
+
+  return (
+    <div style={{
+      background: '#2d0a0a',
+      border: '2px solid #dc3545',
+      borderRadius: '8px',
+      padding: '12px 14px',
+      marginBottom: '10px',
+      animation: 'pulse 2s infinite',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
+        <div>
+          <span style={{ color: '#ff5252', fontWeight: '700', fontSize: '13px' }}>
+            🚨 SOS — {name}
+          </span>
+          <span style={{ color: '#888', fontSize: '11px', marginLeft: '8px' }}>at {time}</span>
+        </div>
+        {sosRider.sosBattery != null && (
+          <span style={{ fontSize: '11px', color: '#ff8a80', whiteSpace: 'nowrap' }}>
+            🔋 {sosRider.sosBattery}%
+          </span>
+        )}
+      </div>
+
+      {hasCoords && (
+        <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#aaa' }}>
+          📍 {Number(loc.lat).toFixed(4)}, {Number(loc.lon).toFixed(4)}
+        </p>
+      )}
+
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <button
+          onClick={() => onResolve(sosRider.riderId)}
+          disabled={resolving}
+          style={{
+            padding: '5px 12px',
+            background: resolving ? '#444' : '#28a745',
+            color: 'white', border: 'none', borderRadius: '5px',
+            cursor: resolving ? 'not-allowed' : 'pointer',
+            fontSize: '12px', fontWeight: '600',
+            transition: 'background 0.15s',
+          }}
+        >
+          {resolving ? '⏳ Resolving...' : '✓ Mark as Resolved'}
+        </button>
+        {mapsUrl && (
+          <a
+            href={mapsUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              padding: '5px 12px',
+              background: '#1565c0', color: 'white',
+              borderRadius: '5px', textDecoration: 'none',
+              fontSize: '12px', fontWeight: '600',
+            }}
+          >
+            📍 Open Maps
+          </a>
+        )}
       </div>
     </div>
   );
@@ -365,6 +441,10 @@ export default function WatcherDashboard() {
   const [sosRider, setSosRider]               = useState(null);
   const [reminderStatus, setReminderStatus]   = useState({});
 
+  // NEW: pending SOS riders that were dismissed but not yet resolved
+  const [pendingSosRiders, setPendingSosRiders] = useState({}); // { [riderId]: sosRiderData }
+  const [resolvingRiderIds, setResolvingRiderIds] = useState(new Set()); // track in-flight resolves
+
   const [riderWeather, setRiderWeather]       = useState({});
   const [rainPrompts, setRainPrompts]         = useState([]);
   const rainPromptedRef                       = useRef({});
@@ -487,6 +567,13 @@ export default function WatcherDashboard() {
           addAlert(`🚨 SOS ALERT from ${riderData.sosRiderName || riderData.location?.name || riderId}!`, 'danger');
         } else if (riderData.sosTriggered === false) {
           sosProcessedRef.current[riderId] = false;
+          // Auto-clear from pending if Firebase says resolved
+          setPendingSosRiders((prev) => {
+            if (!prev[riderId]) return prev;
+            const next = { ...prev };
+            delete next[riderId];
+            return next;
+          });
         }
 
         const loc = riderData.location;
@@ -631,19 +718,46 @@ export default function WatcherDashboard() {
     }
   };
 
-  const handleSOSResolve = async () => {
-    if (!sosRider?.riderId) return;
+  // CHANGED: resolve now accepts an optional riderId so it can be called from PendingSOSBanner too
+  const handleSOSResolve = async (riderIdOverride) => {
+    const targetId = riderIdOverride ?? sosRider?.riderId;
+    if (!targetId) return;
+
+    setResolvingRiderIds((prev) => new Set([...prev, targetId]));
     try {
-      await update(ref(db, `riders/${sosRider.riderId}`), { sosTriggered: false });
-      sosProcessedRef.current[sosRider.riderId] = false;
-      setSosRider(null);
+      await update(ref(db, `riders/${targetId}`), { sosTriggered: false });
+      sosProcessedRef.current[targetId] = false;
+      // Clear from pending map
+      setPendingSosRiders((prev) => {
+        const next = { ...prev };
+        delete next[targetId];
+        return next;
+      });
+      // Close modal if it's still open for this rider
+      if (sosRider?.riderId === targetId) setSosRider(null);
     } catch (error) {
       console.error('Failed to resolve SOS:', error);
       alert('Failed to mark SOS as resolved');
+    } finally {
+      setResolvingRiderIds((prev) => {
+        const next = new Set(prev);
+        next.delete(targetId);
+        return next;
+      });
     }
   };
 
-  // FIX: recenter uses firstOnlineRider or falls back to defaultCenter
+  // CHANGED: onClose now receives the sosRider data so we can store it as pending
+  const handleSOSModalClose = (dismissedSosRider) => {
+    if (dismissedSosRider?.riderId) {
+      setPendingSosRiders((prev) => ({
+        ...prev,
+        [dismissedSosRider.riderId]: dismissedSosRider,
+      }));
+    }
+    setSosRider(null);
+  };
+
   const handleRecenterMap = () => {
     if (!mapRef.current) return;
     if (firstOnlineRider && validCoords(firstOnlineRider.lat, firstOnlineRider.lon)) {
@@ -653,7 +767,6 @@ export default function WatcherDashboard() {
     }
   };
 
-  // FIX: fitAll uses ALL riders with valid coords, not just online ones
   const handleFitAll = () => {
     if (!mapRef.current) return;
 
@@ -662,7 +775,6 @@ export default function WatcherDashboard() {
       .map(([, r]) => [Number(r.location.lat), Number(r.location.lon ?? r.location.lng)]);
 
     if (!allWithCoords.length) {
-      // No riders at all — go to default
       mapRef.current.setView(defaultCenter, 13);
       return;
     }
@@ -673,6 +785,8 @@ export default function WatcherDashboard() {
       mapRef.current.fitBounds(allWithCoords, { padding: [50, 50] });
     }
   };
+
+  const pendingSosEntries = Object.entries(pendingSosRiders);
 
   return (
     <div className="watcher-dashboard">
@@ -719,8 +833,6 @@ export default function WatcherDashboard() {
       {/* Map + Alerts grid */}
       <div className="watcher-map-alerts-grid">
         <div className="map-wrapper">
-
-          {/* FIX: buttons container — column flex, no position:absolute on buttons themselves */}
           <div style={{
             position: 'absolute',
             bottom: '15px',
@@ -738,7 +850,6 @@ export default function WatcherDashboard() {
             </button>
           </div>
 
-          {/* Route toggle */}
           <button
             onClick={() => setShowRoutes((v) => !v)}
             style={{
@@ -752,7 +863,6 @@ export default function WatcherDashboard() {
             {showRoutes ? '🛣️ Routes ON' : '🛣️ Routes OFF'}
           </button>
 
-          {/* Charging stations badge */}
           {chargingStations.length > 0 && (
             <div style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 1000, background: 'rgba(0,0,0,0.7)', color: 'white', borderRadius: '6px', padding: '4px 8px', fontSize: '12px' }}>
               ⚡ {chargingStations.length} chargers nearby
@@ -767,7 +877,6 @@ export default function WatcherDashboard() {
             />
             <MapController onMapReady={handleMapReady} />
 
-            {/* Live route polylines */}
             {showRoutes && onlineRiders.map(([riderId, riderData]) => {
               const route = riderData.currentRoute;
               if (!validRoute(route)) return null;
@@ -781,7 +890,6 @@ export default function WatcherDashboard() {
               );
             })}
 
-            {/* Last completed trip route (dimmer) */}
             {showRoutes && Object.entries(riders).map(([riderId, riderData]) => {
               if (riderData.status === 'online') return null;
               const trips = riderData.trips ? Object.values(riderData.trips) : [];
@@ -798,7 +906,6 @@ export default function WatcherDashboard() {
               );
             })}
 
-            {/* Online rider markers */}
             {onlineRiders.map(([riderId, riderData]) => {
               const hasSOS = riderData.sosTriggered && !riderData.sosResolved;
               const bat    = Number(riderData.location.battery ?? 100);
@@ -823,7 +930,6 @@ export default function WatcherDashboard() {
               );
             })}
 
-            {/* Offline rider markers */}
             {offlineRiders.map(([riderId, riderData]) => {
               const name = riderData.location?.name || riderId;
               const lon  = riderData.location.lon ?? riderData.location.lng;
@@ -834,14 +940,12 @@ export default function WatcherDashboard() {
               );
             })}
 
-            {/* Geofences */}
             {geofences.map((zone) => (
               <Circle key={zone.id} center={[zone.lat, zone.lng]} radius={zone.radiusKm * 1000} fillColor="blue" fillOpacity={0.1} color="blue">
                 <Popup>{zone.name}</Popup>
               </Circle>
             ))}
 
-            {/* Charging stations */}
             {chargingStations.map((s) => (
               <Marker key={s.id} position={[s.lat, s.lon]} icon={createChargingIcon()}>
                 <Popup>
@@ -864,6 +968,23 @@ export default function WatcherDashboard() {
         {/* Alerts panel */}
         <div>
           <h3 style={{ margin: '0 0 12px', color: '#fff' }}>Recent Alerts</h3>
+
+          {/* NEW: sticky pending SOS banners — shown above the alerts scroll */}
+          {pendingSosEntries.length > 0 && (
+            <div style={{ marginBottom: '12px' }}>
+              <p style={{ margin: '0 0 8px', fontSize: '11px', color: '#ff5252', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px' }}>
+                ⚠️ Unresolved SOS ({pendingSosEntries.length})
+              </p>
+              {pendingSosEntries.map(([riderId, sosData]) => (
+                <PendingSOSBanner
+                  key={riderId}
+                  sosRider={sosData}
+                  onResolve={handleSOSResolve}
+                  resolving={resolvingRiderIds.has(riderId)}
+                />
+              ))}
+            </div>
+          )}
 
           <div className="watcher-reminder-strip">
             {Object.entries(reminderStatus).map(([key, status]) => (
@@ -935,7 +1056,14 @@ export default function WatcherDashboard() {
         );
       })()}
 
-      {sosRider && <SOSAlertModal sosRider={sosRider} onResolve={handleSOSResolve} onClose={() => setSosRider(null)} />}
+      {/* CHANGED: onClose now passes dismissedSosRider to handleSOSModalClose */}
+      {sosRider && (
+        <SOSAlertModal
+          sosRider={sosRider}
+          onResolve={() => handleSOSResolve()}
+          onClose={handleSOSModalClose}
+        />
+      )}
     </div>
   );
 }
