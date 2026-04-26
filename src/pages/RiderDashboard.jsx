@@ -508,6 +508,10 @@ export default function RiderDashboard({ riderName, isActive = true }) {
   const drainLabel    = getDrainLabel();
   const batteryTheme  = getBatteryTheme();
 
+  // ── FIX: Est. Range and Est. Time use getProjectedRange() ────────────────
+  const estRange = parseFloat(getProjectedRange());
+  const estTimeMin = Math.round(estRange / 25 * 60);
+
   const ecoCardStyle = {
     background: 'rgba(0,0,0,0.30)', border: '1px solid rgba(255,255,255,0.12)',
     borderRadius: '10px', padding: '14px 16px', marginBottom: '16px',
@@ -547,7 +551,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
           <div className="battery-modal battery-modal-critical" onClick={(e) => e.stopPropagation()}>
             <div className="battery-modal-icon">🔋</div>
             <h2>Critical Battery — {battery}%</h2>
-            <p>Estimated range: <strong>~{projRange || Math.round((battery / 100) * 160)} km</strong></p>
+            <p>Estimated range: <strong>~{projRange || estRange} km</strong></p>
             <p className="battery-modal-sub">Find a charging station immediately or head home.</p>
 
             {stationsLoading && <p className="battery-modal-sub" style={{ color: '#ffa726' }}>⏳ Finding nearby stations...</p>}
@@ -646,11 +650,12 @@ export default function RiderDashboard({ riderName, isActive = true }) {
                 ) : (
                   <div className="battery-stat">⚠️ Medium — plan a charge stop</div>
                 )}
+                {/* ── FIXED: use getProjectedRange() for accurate values ── */}
                 <div className="battery-stat">
-                  <strong>Est. Range:</strong> ~{Math.round((battery / 100) * 160)} km
+                  <strong>Est. Range:</strong> ~{estRange} km
                 </div>
                 <div className="battery-stat">
-                  <strong>Est. Time:</strong> {Math.round((battery / 100) * 180)} min
+                  <strong>Est. Time:</strong> ~{estTimeMin} min
                 </div>
               </div>
             </div>
