@@ -27,7 +27,6 @@ const BATTERY_LOW      = 25;
 const DRAIN_BASELINE_WH_KM = 37;
 const DRAIN_ALERT_RATIO    = 1.20;
 
-// ── FIX: accepts isActive prop — pauses GPS when on watcher tab ──────────────
 export default function RiderDashboard({ riderName, isActive = true }) {
   const [isSharing, setIsSharing]               = useState(false);
   const [battery, setBattery]                   = useState(85);
@@ -102,6 +101,8 @@ export default function RiderDashboard({ riderName, isActive = true }) {
       addToast(`🚨 Critical battery (${battery}%)! Stop and charge immediately.`, 'critical', 0);
       if (!criticalModalShownForBatteryRef.current) {
         criticalModalShownForBatteryRef.current = true;
+        // Reset fetch ref so modal can fetch fresh
+        stationsFetchedRef.current = false;
         setCriticalModal(true);
       }
       if (location) fetchNearbyStations(location.latitude, location.longitude);
@@ -109,36 +110,34 @@ export default function RiderDashboard({ riderName, isActive = true }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [battery, isSharing]);
 
-  const fetchNearbyStations = async (lat, lon) => {
-    if (stationsFetchedRef.current) return;
-    stationsFetchedRef.current = true;
+  // FIX: core fetch function — always fetches, no guard here
+  const _doFetchStations = async (lat, lon) => {
     setStationsLoading(true);
     try {
       const results = await fetchChargingStations(lat, lon, 3);
       setStations(results);
-      setShowStations(true);
+      stationsFetchedRef.current = true;
     } catch (e) {
       console.error('Station fetch error:', e);
+      stationsFetchedRef.current = false; // allow retry on error
     } finally {
       setStationsLoading(false);
     }
   };
 
+  // Called from battery alerts — only fetches once unless reset
+  const fetchNearbyStations = async (lat, lon) => {
+    if (stationsFetchedRef.current) return;
+    await _doFetchStations(lat, lon);
+  };
+
+  // Called from buttons — always fetches fresh
   const handleFindStations = async () => {
     stationsFetchedRef.current = false;
+    setShowStations(true);
     const lat = location?.latitude  ?? 18.5204;
     const lon = location?.longitude ?? 73.8567;
-    setStationsLoading(true);
-    setShowStations(true);
-    try {
-      const results = await fetchChargingStations(lat, lon, 3);
-      setStations(results);
-    } catch (e) {
-      console.error('Station fetch error:', e);
-    } finally {
-      setStationsLoading(false);
-      stationsFetchedRef.current = true;
-    }
+    await _doFetchStations(lat, lon);
   };
 
   useEffect(() => {
@@ -197,9 +196,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
     return () => clearInterval(interval);
   }, [isSharing]);
 
-  // ── FIX: GPS useEffect — pauses when isActive is false ──────────────────────
   useEffect(() => {
-    // Stop GPS if not sharing OR if the rider tab is hidden (watcher tab active)
     if (!isSharing || !isActive) {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
@@ -253,7 +250,6 @@ export default function RiderDashboard({ riderName, isActive = true }) {
       navigator.geolocation.clearWatch(id);
       watchIdRef.current = null;
     };
-  // ── isActive added to deps ───────────────────────────────────────────────
   }, [isSharing, isActive, riderName, riderId]);
 
   const _doStartSharing = () => {
@@ -285,6 +281,9 @@ export default function RiderDashboard({ riderName, isActive = true }) {
     }
     if (battery <= BATTERY_CRITICAL) {
       criticalModalShownForBatteryRef.current = false;
+      // FIX: reset fetch ref when opening modal via start button
+      stationsFetchedRef.current = false;
+      setStations([]);
       setCriticalModal(true);
       return;
     }
@@ -508,13 +507,56 @@ export default function RiderDashboard({ riderName, isActive = true }) {
   const drainLabel    = getDrainLabel();
   const batteryTheme  = getBatteryTheme();
 
-  // ── FIX: Est. Range and Est. Time use getProjectedRange() ────────────────
-  const estRange = parseFloat(getProjectedRange());
+  const estRange   = parseFloat(getProjectedRange());
   const estTimeMin = Math.round(estRange / 25 * 60);
 
   const ecoCardStyle = {
     background: 'rgba(0,0,0,0.30)', border: '1px solid rgba(255,255,255,0.12)',
     borderRadius: '10px', padding: '14px 16px', marginBottom: '16px',
+  };
+
+  // ── Shared station list renderer (used in both modal and card) ────────────
+  const StationList = ({ fromLat, fromLon }) => {
+    if (stationsLoading) {
+      return (
+        <p style={{ color: '#ffa726', fontSize: '13px', margin: '8px 0', textAlign: 'center' }}>
+          ⏳ Finding nearby stations...
+        </p>
+      );
+    }
+    if (stations.length === 0) {
+      return (
+        <button
+          className="battery-modal-btn battery-modal-btn-secondary"
+          style={{ marginTop: '8px', width: '100%' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleFindStations();
+          }}
+        >
+          🔍 Find Nearby Stations
+        </button>
+      );
+    }
+    return (
+      <div className="battery-modal-stations">
+        {stations.slice(0, 3).map((s) => (
+          <a
+            key={s.id}
+            href={
+              fromLat && fromLon
+                ? buildMapsUrl(fromLat, fromLon, s.lat, s.lon)
+                : `https://www.google.com/maps?q=${s.lat},${s.lon}`
+            }
+            target="_blank"
+            rel="noreferrer"
+            className="battery-modal-station-link"
+          >
+            🔌 {s.name} — {s.distanceKm} km →
+          </a>
+        ))}
+      </div>
+    );
   };
 
   return (
@@ -529,6 +571,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
         ))}
       </div>
 
+      {/* ── Start Block Modal (0% battery) ─────────────────────────────── */}
       {startBlockModal && (
         <div className="battery-modal-overlay" onClick={() => setStartBlockModal(false)}>
           <div className="battery-modal" onClick={(e) => e.stopPropagation()}>
@@ -546,6 +589,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
         </div>
       )}
 
+      {/* ── Critical Battery Modal ──────────────────────────────────────── */}
       {criticalModal && (
         <div className="battery-modal-overlay" onClick={() => setCriticalModal(false)}>
           <div className="battery-modal battery-modal-critical" onClick={(e) => e.stopPropagation()}>
@@ -554,37 +598,11 @@ export default function RiderDashboard({ riderName, isActive = true }) {
             <p>Estimated range: <strong>~{projRange || estRange} km</strong></p>
             <p className="battery-modal-sub">Find a charging station immediately or head home.</p>
 
-            {stationsLoading && <p className="battery-modal-sub" style={{ color: '#ffa726' }}>⏳ Finding nearby stations...</p>}
-
-            {stations.length > 0 && (
-              <div className="battery-modal-stations">
-                {stations.slice(0, 3).map((s) => (
-                  <a
-                    key={s.id}
-                    href={
-                      location
-                        ? buildMapsUrl(location.latitude, location.longitude, s.lat, s.lon)
-                        : `https://www.google.com/maps?q=${s.lat},${s.lon}`
-                    }
-                    target="_blank"
-                    rel="noreferrer"
-                    className="battery-modal-station-link"
-                  >
-                    🔌 {s.name} — {s.distanceKm} km →
-                  </a>
-                ))}
-              </div>
-            )}
-
-            {!stationsLoading && stations.length === 0 && (
-              <button
-                className="battery-modal-btn battery-modal-btn-secondary"
-                style={{ marginTop: '12px', width: '100%' }}
-                onClick={(e) => { e.stopPropagation(); handleFindStations(); }}
-              >
-                🔍 Find Nearby Stations
-              </button>
-            )}
+            {/* FIX: StationList handles all three states — loading, empty+button, results */}
+            <StationList
+              fromLat={location?.latitude}
+              fromLon={location?.longitude}
+            />
 
             <div className="battery-modal-actions" style={{ marginTop: '16px' }}>
               <button
@@ -650,7 +668,6 @@ export default function RiderDashboard({ riderName, isActive = true }) {
                 ) : (
                   <div className="battery-stat">⚠️ Medium — plan a charge stop</div>
                 )}
-                {/* ── FIXED: use getProjectedRange() for accurate values ── */}
                 <div className="battery-stat">
                   <strong>Est. Range:</strong> ~{estRange} km
                 </div>
@@ -684,7 +701,6 @@ export default function RiderDashboard({ riderName, isActive = true }) {
             </div>
           )}
 
-          {/* GPS paused notice — shown when sharing but tab hidden */}
           {isSharing && !isActive && (
             <div style={{
               padding: '8px 12px', marginBottom: '10px',
@@ -756,6 +772,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
             </div>
           )}
 
+          {/* ── Charging Stations Card ────────────────────────────────────── */}
           <div className="charging-stations-card">
             <div
               className="charging-stations-header"
