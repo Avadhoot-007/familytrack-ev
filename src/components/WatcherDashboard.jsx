@@ -6,14 +6,18 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './WatcherDashboard.css';
 import { isInsideGeofence } from '../services/locationService';
-import { geofences } from '../data/geofences';
+import { geofences as staticGeofences } from '../data/geofences';
 import { fetchChargingStations } from '../services/chargingStations';
 import TripSummaryCard from './TripSummaryCard.jsx';
 import CoachingTipCard from './CoachingTipCard.jsx';
 import { downloadTripPDF } from '../utils/tripPDFExport';
+import GeofenceEditor from './GeofenceEditor.jsx';
+import { useStore } from '../store';
 
 const RIDER_COLORS = ['#e53935', '#1e88e5', '#8e24aa', '#f4511e', '#00897b'];
+const GEOFENCE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'];
 const getRiderColor = (index) => RIDER_COLORS[index % RIDER_COLORS.length];
+const getZoneColor  = (index) => GEOFENCE_COLORS[index % GEOFENCE_COLORS.length];
 
 const validCoords = (lat, lon) =>
   lat != null && lon != null && !isNaN(Number(lat)) && !isNaN(Number(lon));
@@ -51,9 +55,9 @@ const createChargingIcon = () =>
     iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -16],
   });
 
-const BATTERY_CRITICAL = 10;
-const BATTERY_LOW      = 25;
-const DRAIN_BASELINE   = 37;
+const BATTERY_CRITICAL  = 10;
+const BATTERY_LOW       = 25;
+const DRAIN_BASELINE    = 37;
 const DRAIN_ALERT_RATIO = 1.20;
 
 const OWM_KEY = import.meta.env.VITE_OPENWEATHER_API_KEY;
@@ -138,7 +142,6 @@ function SOSAlertModal({ sosRider, onResolve, onClose }) {
             ? <a href={mapsUrl} target="_blank" rel="noreferrer" className="maps-btn">📍 Open in Google Maps</a>
             : <div style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', fontSize: '13px', color: '#999', textAlign: 'center', border: '1px solid #444' }}>📍 Location unavailable</div>}
           <button onClick={onResolve} className="resolve-btn">✓ Mark as Resolved</button>
-          {/* CHANGED: dismiss now passes the rider to onClose so parent can store it as pending */}
           <button onClick={() => onClose(sosRider)} className="dismiss-btn">Dismiss (keep monitoring)</button>
         </div>
       </div>
@@ -146,7 +149,6 @@ function SOSAlertModal({ sosRider, onResolve, onClose }) {
   );
 }
 
-// NEW: sticky banner shown in the alerts panel for each pending (dismissed but unresolved) SOS
 function PendingSOSBanner({ sosRider, onResolve, resolving }) {
   const raw = sosRider.sosLocation;
   const loc = raw ? { lat: raw.lat ?? raw.latitude ?? null, lon: raw.lon ?? raw.lng ?? raw.longitude ?? null } : null;
@@ -159,33 +161,24 @@ function PendingSOSBanner({ sosRider, onResolve, resolving }) {
 
   return (
     <div style={{
-      background: '#2d0a0a',
-      border: '2px solid #dc3545',
-      borderRadius: '8px',
-      padding: '12px 14px',
-      marginBottom: '10px',
+      background: '#2d0a0a', border: '2px solid #dc3545',
+      borderRadius: '8px', padding: '12px 14px', marginBottom: '10px',
       animation: 'pulse 2s infinite',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
         <div>
-          <span style={{ color: '#ff5252', fontWeight: '700', fontSize: '13px' }}>
-            🚨 SOS — {name}
-          </span>
+          <span style={{ color: '#ff5252', fontWeight: '700', fontSize: '13px' }}>🚨 SOS — {name}</span>
           <span style={{ color: '#888', fontSize: '11px', marginLeft: '8px' }}>at {time}</span>
         </div>
         {sosRider.sosBattery != null && (
-          <span style={{ fontSize: '11px', color: '#ff8a80', whiteSpace: 'nowrap' }}>
-            🔋 {sosRider.sosBattery}%
-          </span>
+          <span style={{ fontSize: '11px', color: '#ff8a80', whiteSpace: 'nowrap' }}>🔋 {sosRider.sosBattery}%</span>
         )}
       </div>
-
       {hasCoords && (
         <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#aaa' }}>
           📍 {Number(loc.lat).toFixed(4)}, {Number(loc.lon).toFixed(4)}
         </p>
       )}
-
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
         <button
           onClick={() => onResolve(sosRider.riderId)}
@@ -195,24 +188,16 @@ function PendingSOSBanner({ sosRider, onResolve, resolving }) {
             background: resolving ? '#444' : '#28a745',
             color: 'white', border: 'none', borderRadius: '5px',
             cursor: resolving ? 'not-allowed' : 'pointer',
-            fontSize: '12px', fontWeight: '600',
-            transition: 'background 0.15s',
+            fontSize: '12px', fontWeight: '600', transition: 'background 0.15s',
           }}
         >
           {resolving ? '⏳ Resolving...' : '✓ Mark as Resolved'}
         </button>
         {mapsUrl && (
-          <a
-            href={mapsUrl}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              padding: '5px 12px',
-              background: '#1565c0', color: 'white',
-              borderRadius: '5px', textDecoration: 'none',
-              fontSize: '12px', fontWeight: '600',
-            }}
-          >
+          <a href={mapsUrl} target="_blank" rel="noreferrer" style={{
+            padding: '5px 12px', background: '#1565c0', color: 'white',
+            borderRadius: '5px', textDecoration: 'none', fontSize: '12px', fontWeight: '600',
+          }}>
             📍 Open Maps
           </a>
         )}
@@ -306,7 +291,7 @@ function TripHistoryTable({ trips, filterDays, onTripClick, onExportPDF }) {
   );
 }
 
-function AlertItem({ alert, riders, onSendReminder, onDismiss }) {
+function AlertItem({ alert, onSendReminder }) {
   const bgColor     = alert.type === 'danger'  ? '#3d1a1a' : alert.type === 'success' ? '#1a3d1a' : '#3d3200';
   const borderColor = alert.type === 'danger'  ? '#f5c6cb' : alert.type === 'success' ? '#28a745'  : '#ffc107';
   const textColor   = alert.type === 'danger'  ? '#ffcdd2' : alert.type === 'success' ? '#c8e6c9'  : '#ffe082';
@@ -315,17 +300,14 @@ function AlertItem({ alert, riders, onSendReminder, onDismiss }) {
     <div style={{
       padding: '10px 12px', margin: '5px 0', background: bgColor,
       border: `1px solid ${borderColor}`, borderRadius: '6px', fontSize: '13px',
-      color: textColor,
-      fontWeight: alert.type === 'danger' ? 'bold' : 'normal',
+      color: textColor, fontWeight: alert.type === 'danger' ? 'bold' : 'normal',
     }}>
       <div style={{ marginBottom: alert.actionType ? '8px' : 0 }}>{alert.message}</div>
 
       {alert.actionType === 'charging_reminder' && alert.riderId && (
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => onSendReminder(alert.riderId, alert.riderName, 'low_battery')}
-            style={{ padding: '4px 10px', background: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', color: '#1a1a1a' }}
-          >
+          <button onClick={() => onSendReminder(alert.riderId, alert.riderName, 'low_battery')}
+            style={{ padding: '4px 10px', background: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', color: '#1a1a1a' }}>
             💬 Send Charging Reminder
           </button>
           {alert.stationUrl && (
@@ -339,10 +321,8 @@ function AlertItem({ alert, riders, onSendReminder, onDismiss }) {
 
       {alert.actionType === 'critical_battery' && alert.riderId && (
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => onSendReminder(alert.riderId, alert.riderName, 'critical_battery')}
-            style={{ padding: '4px 10px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
-          >
+          <button onClick={() => onSendReminder(alert.riderId, alert.riderName, 'critical_battery')}
+            style={{ padding: '4px 10px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
             🚨 Send Critical Alert
           </button>
           {alert.stationUrl && (
@@ -355,19 +335,15 @@ function AlertItem({ alert, riders, onSendReminder, onDismiss }) {
       )}
 
       {alert.actionType === 'drain_warning' && alert.riderId && (
-        <button
-          onClick={() => onSendReminder(alert.riderId, alert.riderName, 'drain_warning')}
-          style={{ marginTop: '2px', padding: '4px 10px', background: '#fd7e14', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
-        >
+        <button onClick={() => onSendReminder(alert.riderId, alert.riderName, 'drain_warning')}
+          style={{ marginTop: '2px', padding: '4px 10px', background: '#fd7e14', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
           💬 Send Eco Tip
         </button>
       )}
 
       {alert.actionType === 'rain_tip' && alert.riderId && (
-        <button
-          onClick={() => onSendReminder(alert.riderId, alert.riderName, 'rain_tip')}
-          style={{ marginTop: '2px', padding: '4px 10px', background: '#1565c0', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
-        >
+        <button onClick={() => onSendReminder(alert.riderId, alert.riderName, 'rain_tip')}
+          style={{ marginTop: '2px', padding: '4px 10px', background: '#1565c0', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
           🌧️ Send Rain Warning
         </button>
       )}
@@ -379,35 +355,29 @@ const REMINDER_TIPS = {
   low_battery: {
     title: 'Low Battery — Find a Charger',
     message: 'Your battery is getting low. Please find a charging station soon or head home.',
-    category: 'battery',
-    priority: 'high',
+    category: 'battery', priority: 'high',
   },
   critical_battery: {
     title: '🚨 Critical Battery — Stop Now',
     message: 'Battery is critically low! Stop riding immediately and find the nearest charging station.',
-    category: 'battery',
-    priority: 'high',
+    category: 'battery', priority: 'high',
   },
   drain_warning: {
     title: '⚡ Ease Off Throttle',
     message: 'You\'re draining battery faster than normal. Smooth acceleration and lower speeds will extend your range significantly.',
-    category: 'throttle',
-    priority: 'medium',
+    category: 'throttle', priority: 'medium',
   },
   rain_tip: {
     title: '🌧️ Rain Alert — Slow Down',
     message: 'It\'s raining in your area. Reduce speed, increase following distance, and avoid sharp braking. Stay safe!',
-    category: 'weather',
-    priority: 'high',
+    category: 'weather', priority: 'high',
   },
 };
 
 function RouteLegend({ riders, riderColorMap }) {
-  const onlineWithRoutes = Object.entries(riders).filter(([riderId, r]) => {
-    const route = r.currentRoute;
-    return r.status === 'online' && validRoute(route);
-  });
-
+  const onlineWithRoutes = Object.entries(riders).filter(([, r]) =>
+    r.status === 'online' && validRoute(r.currentRoute)
+  );
   if (!onlineWithRoutes.length) return null;
 
   return (
@@ -419,11 +389,10 @@ function RouteLegend({ riders, riderColorMap }) {
       {onlineWithRoutes.map(([riderId, r]) => {
         const name  = r.location?.name || riderId;
         const color = riderColorMap.current[riderId] || '#e53935';
-        const pts   = r.currentRoute.length;
         return (
           <div key={riderId} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#e0e0e0' }}>
             <div style={{ width: '20px', height: '3px', background: color, borderRadius: '2px' }} />
-            <span>{name} ({pts} pts)</span>
+            <span>{name} ({r.currentRoute.length} pts)</span>
           </div>
         );
       })}
@@ -431,40 +400,71 @@ function RouteLegend({ riders, riderColorMap }) {
   );
 }
 
+// ── Main component ──────────────────────────────────────────────────────────
 export default function WatcherDashboard() {
-  const [riders, setRiders]                   = useState({});
-  const [alerts, setAlerts]                   = useState([]);
-  const [allTrips, setAllTrips]               = useState([]);
-  const [filterDays, setFilterDays]           = useState(7);
+  // Read familyId from Zustand store — guests have null
+  const familyId = useStore((s) => s.familyId);
+
+  const [riders, setRiders]                     = useState({});
+  const [alerts, setAlerts]                     = useState([]);
+  const [allTrips, setAllTrips]                 = useState([]);
+  const [filterDays, setFilterDays]             = useState(7);
   const [firstOnlineRider, setFirstOnlineRider] = useState(null);
-  const [selectedTrip, setSelectedTrip]       = useState(null);
-  const [sosRider, setSosRider]               = useState(null);
-  const [reminderStatus, setReminderStatus]   = useState({});
-
-  // NEW: pending SOS riders that were dismissed but not yet resolved
-  const [pendingSosRiders, setPendingSosRiders] = useState({}); // { [riderId]: sosRiderData }
-  const [resolvingRiderIds, setResolvingRiderIds] = useState(new Set()); // track in-flight resolves
-
-  const [riderWeather, setRiderWeather]       = useState({});
-  const [rainPrompts, setRainPrompts]         = useState([]);
-  const rainPromptedRef                       = useRef({});
-
+  const [selectedTrip, setSelectedTrip]         = useState(null);
+  const [sosRider, setSosRider]                 = useState(null);
+  const [reminderStatus, setReminderStatus]     = useState({});
+  const [pendingSosRiders, setPendingSosRiders] = useState({});
+  const [resolvingRiderIds, setResolvingRiderIds] = useState(new Set());
+  const [riderWeather, setRiderWeather]         = useState({});
+  const [rainPrompts, setRainPrompts]           = useState([]);
+  const rainPromptedRef                         = useRef({});
   const [chargingStations, setChargingStations] = useState([]);
-  const chargingFetchedRef                    = useRef(false);
+  const chargingFetchedRef                      = useRef(false);
+  const [showRoutes, setShowRoutes]             = useState(true);
 
-  const [showRoutes, setShowRoutes]           = useState(true);
+  // ── Geofence state ────────────────────────────────────────────────────────
+  // activeGeofences = merged list used for alerts + map rendering
+  const [firebaseGeofences, setFirebaseGeofences] = useState([]);
+  const [showGeofenceEditor, setShowGeofenceEditor] = useState(false);
+
+  // Merge: if familyId exists and Firebase has zones, use those; else static fallback
+  const activeGeofences = familyId && firebaseGeofences.length > 0
+    ? firebaseGeofences
+    : staticGeofences;
 
   const batteryAlertedRef = useRef({});
   const drainAlertedRef   = useRef({});
   const rangeAlertedRef   = useRef({});
-
-  const mapRef          = useRef(null);
-  const riderIndexMap   = useRef({});
-  const riderColorMap   = useRef({});
+  const mapRef            = useRef(null);
+  const riderIndexMap     = useRef({});
+  const riderColorMap     = useRef({});
   const previousInsideRef = useRef({});
-  const sosProcessedRef = useRef({});
+  const sosProcessedRef   = useRef({});
 
   const handleMapReady = useCallback((m) => { mapRef.current = m; }, []);
+
+  // ── Firebase geofence listener (only when familyId exists) ───────────────
+  useEffect(() => {
+    if (!familyId) {
+      setFirebaseGeofences([]);
+      return;
+    }
+    const zonesRef = ref(db, `families/${familyId}/geofences`);
+    const unsub = onValue(zonesRef, (snap) => {
+      const data = snap.val();
+      if (!data) { setFirebaseGeofences([]); return; }
+      // Normalise: GeofenceEditor stores lng, static uses lng too — keep consistent
+      const list = Object.entries(data).map(([id, z]) => ({
+        id,
+        name:     z.name,
+        lat:      z.lat,
+        lng:      z.lng,
+        radiusKm: z.radiusKm,
+      }));
+      setFirebaseGeofences(list);
+    });
+    return () => unsub();
+  }, [familyId]);
 
   const fetchMapStations = useCallback(async (lat, lon) => {
     if (chargingFetchedRef.current) return;
@@ -520,18 +520,11 @@ export default function WatcherDashboard() {
   const handleSendReminder = async (riderId, riderName, tipType) => {
     const key = `${riderId}_${tipType}`;
     setReminderStatus((prev) => ({ ...prev, [key]: 'sending' }));
-
     const tip = REMINDER_TIPS[tipType];
     if (!tip) return;
-
     try {
       const tipsRef = ref(db, `riders/${riderId}/coachingTips`);
-      await push(tipsRef, {
-        ...tip,
-        sentBy: 'watcher',
-        sentAt: new Date().toISOString(),
-        read: false,
-      });
+      await push(tipsRef, { ...tip, sentBy: 'watcher', sentAt: new Date().toISOString(), read: false });
       setReminderStatus((prev) => ({ ...prev, [key]: 'sent' }));
       setTimeout(() => setReminderStatus((prev) => {
         const next = { ...prev };
@@ -544,6 +537,7 @@ export default function WatcherDashboard() {
     }
   };
 
+  // ── Riders Firebase listener ──────────────────────────────────────────────
   useEffect(() => {
     const ridersRef = ref(db, 'riders');
     const unsubscribe = onValue(ridersRef, (snapshot) => {
@@ -567,7 +561,6 @@ export default function WatcherDashboard() {
           addAlert(`🚨 SOS ALERT from ${riderData.sosRiderName || riderData.location?.name || riderId}!`, 'danger');
         } else if (riderData.sosTriggered === false) {
           sosProcessedRef.current[riderId] = false;
-          // Auto-clear from pending if Firebase says resolved
           setPendingSosRiders((prev) => {
             if (!prev[riderId]) return prev;
             const next = { ...prev };
@@ -604,7 +597,7 @@ export default function WatcherDashboard() {
           );
         }
 
-        if (bat > BATTERY_LOW) { ba.low = false; ba.critical = false; }
+        if (bat > BATTERY_LOW)     { ba.low = false; ba.critical = false; }
         else if (bat > BATTERY_CRITICAL) { ba.critical = false; }
 
         if (isOnline && bat <= BATTERY_LOW) fetchMapStations(loc.lat, lon);
@@ -644,9 +637,11 @@ export default function WatcherDashboard() {
           }
         }
 
+        // ── Geofence enter/exit alerts using activeGeofences ───────────────
         if (!previousInsideRef.current[riderId]) previousInsideRef.current[riderId] = {};
-        geofences.forEach((zone) => {
-          const inside  = isInsideGeofence(loc.lat, lon, zone.lat, zone.lng, zone.radiusKm);
+        activeGeofences.forEach((zone) => {
+          const zoneLng = zone.lng ?? zone.lng;
+          const inside    = isInsideGeofence(loc.lat, lon, zone.lat, zoneLng, zone.radiusKm);
           const wasInside = previousInsideRef.current[riderId][zone.id] || false;
           if (inside && !wasInside) {
             addAlert(`✓ ${riderName} entered ${zone.name}`, 'success');
@@ -678,6 +673,9 @@ export default function WatcherDashboard() {
       }
     });
     return () => unsubscribe();
+  // activeGeofences intentionally excluded — alert logic uses snapshot value captured
+  // at callback time; re-subscribing on every geofence change would cause duplicate alerts.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchMapStations]);
 
   useEffect(() => {
@@ -718,22 +716,18 @@ export default function WatcherDashboard() {
     }
   };
 
-  // CHANGED: resolve now accepts an optional riderId so it can be called from PendingSOSBanner too
   const handleSOSResolve = async (riderIdOverride) => {
     const targetId = riderIdOverride ?? sosRider?.riderId;
     if (!targetId) return;
-
     setResolvingRiderIds((prev) => new Set([...prev, targetId]));
     try {
       await update(ref(db, `riders/${targetId}`), { sosTriggered: false });
       sosProcessedRef.current[targetId] = false;
-      // Clear from pending map
       setPendingSosRiders((prev) => {
         const next = { ...prev };
         delete next[targetId];
         return next;
       });
-      // Close modal if it's still open for this rider
       if (sosRider?.riderId === targetId) setSosRider(null);
     } catch (error) {
       console.error('Failed to resolve SOS:', error);
@@ -747,13 +741,9 @@ export default function WatcherDashboard() {
     }
   };
 
-  // CHANGED: onClose now receives the sosRider data so we can store it as pending
   const handleSOSModalClose = (dismissedSosRider) => {
     if (dismissedSosRider?.riderId) {
-      setPendingSosRiders((prev) => ({
-        ...prev,
-        [dismissedSosRider.riderId]: dismissedSosRider,
-      }));
+      setPendingSosRiders((prev) => ({ ...prev, [dismissedSosRider.riderId]: dismissedSosRider }));
     }
     setSosRider(null);
   };
@@ -769,34 +759,62 @@ export default function WatcherDashboard() {
 
   const handleFitAll = () => {
     if (!mapRef.current) return;
-
     const allWithCoords = Object.entries(riders)
       .filter(([, r]) => r.location && validCoords(r.location.lat, r.location.lon ?? r.location.lng))
       .map(([, r]) => [Number(r.location.lat), Number(r.location.lon ?? r.location.lng)]);
-
-    if (!allWithCoords.length) {
-      mapRef.current.setView(defaultCenter, 13);
-      return;
-    }
-
-    if (allWithCoords.length === 1) {
-      mapRef.current.setView(allWithCoords[0], 14);
-    } else {
-      mapRef.current.fitBounds(allWithCoords, { padding: [50, 50] });
-    }
+    if (!allWithCoords.length) { mapRef.current.setView(defaultCenter, 13); return; }
+    if (allWithCoords.length === 1) { mapRef.current.setView(allWithCoords[0], 14); }
+    else { mapRef.current.fitBounds(allWithCoords, { padding: [50, 50] }); }
   };
 
   const pendingSosEntries = Object.entries(pendingSosRiders);
 
   return (
     <div className="watcher-dashboard">
-      <h1 style={{ margin: '0 0 16px', fontSize: 'clamp(20px, 5vw, 28px)' }}>Watcher Dashboard</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+        <h1 style={{ margin: 0, fontSize: 'clamp(20px, 5vw, 28px)' }}>Watcher Dashboard</h1>
+        {/* Geofence editor toggle — visible to all; guests see read-only static zones */}
+        <button
+          onClick={() => setShowGeofenceEditor((v) => !v)}
+          style={{
+            padding: '8px 16px', fontSize: '13px', fontWeight: '600',
+            background: showGeofenceEditor ? '#3b82f6' : '#2a2d3a',
+            border: `1px solid ${showGeofenceEditor ? '#3b82f6' : '#3a3d4a'}`,
+            color: showGeofenceEditor ? '#fff' : '#aaa',
+            borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s',
+          }}
+        >
+          📍 {showGeofenceEditor ? 'Hide Geofences' : 'Manage Geofences'}
+          {familyId && firebaseGeofences.length > 0 && (
+            <span style={{ marginLeft: '6px', background: 'rgba(255,255,255,0.2)', borderRadius: '10px', padding: '1px 6px', fontSize: '11px' }}>
+              {firebaseGeofences.length}
+            </span>
+          )}
+        </button>
+      </div>
 
       <RainPrompt prompts={rainPrompts} onDismiss={dismissRainPrompt} />
 
       {!OWM_KEY && (
         <div style={{ padding: '10px 14px', marginBottom: '12px', background: '#2a2200', border: '1px solid #ffc107', borderRadius: '6px', fontSize: '13px', color: '#ffe082' }}>
           ⚠️ <strong>Weather overlay disabled.</strong> Add <code>VITE_OPENWEATHER_API_KEY</code> to your <code>.env</code> to enable rain alerts.
+        </div>
+      )}
+
+      {/* ── Geofence editor panel ─────────────────────────────────────────── */}
+      {showGeofenceEditor && (
+        <div style={{ marginBottom: '24px' }}>
+          <GeofenceEditor familyId={familyId} />
+          {!familyId && (
+            <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#666', textAlign: 'center' }}>
+              Showing {staticGeofences.length} default zones. Sign in with Google and join a family to create custom zones.
+            </p>
+          )}
+          {familyId && firebaseGeofences.length === 0 && (
+            <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#666', textAlign: 'center' }}>
+              No custom zones yet — using {staticGeofences.length} default zone{staticGeofences.length !== 1 ? 's' : ''} for alerts.
+            </p>
+          )}
         </div>
       )}
 
@@ -833,21 +851,9 @@ export default function WatcherDashboard() {
       {/* Map + Alerts grid */}
       <div className="watcher-map-alerts-grid">
         <div className="map-wrapper">
-          <div style={{
-            position: 'absolute',
-            bottom: '15px',
-            right: '15px',
-            zIndex: 1000,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '6px',
-          }}>
-            <button onClick={handleFitAll} className="recenter-btn" title="Zoom to show all riders">
-              🗺️ Fit All
-            </button>
-            <button onClick={handleRecenterMap} className="recenter-btn" title="Recenter on first online rider">
-              📍 Recenter
-            </button>
+          <div style={{ position: 'absolute', bottom: '15px', right: '15px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <button onClick={handleFitAll} className="recenter-btn" title="Zoom to show all riders">🗺️ Fit All</button>
+            <button onClick={handleRecenterMap} className="recenter-btn" title="Recenter on first online rider">📍 Recenter</button>
           </div>
 
           <button
@@ -882,11 +888,8 @@ export default function WatcherDashboard() {
               if (!validRoute(route)) return null;
               const color = riderColorMap.current[riderId] || '#e53935';
               return (
-                <Polyline
-                  key={`route-live-${riderId}`}
-                  positions={route}
-                  pathOptions={{ color, weight: 4, opacity: 0.85, lineJoin: 'round', lineCap: 'round' }}
-                />
+                <Polyline key={`route-live-${riderId}`} positions={route}
+                  pathOptions={{ color, weight: 4, opacity: 0.85, lineJoin: 'round', lineCap: 'round' }} />
               );
             })}
 
@@ -898,11 +901,8 @@ export default function WatcherDashboard() {
               if (!validRoute(lastTrip.route)) return null;
               const color = riderColorMap.current[riderId] || '#999';
               return (
-                <Polyline
-                  key={`route-last-${riderId}`}
-                  positions={lastTrip.route}
-                  pathOptions={{ color, weight: 3, opacity: 0.4, dashArray: '6 8', lineJoin: 'round' }}
-                />
+                <Polyline key={`route-last-${riderId}`} positions={lastTrip.route}
+                  pathOptions={{ color, weight: 3, opacity: 0.4, dashArray: '6 8', lineJoin: 'round' }} />
               );
             })}
 
@@ -922,9 +922,7 @@ export default function WatcherDashboard() {
                     🟢 Online
                     {weather && <><br />{rain ? '🌧️' : '☀️'} {weather.description}, {weather.temp}°C</>}
                     {hasSOS && <><br /><span style={{ color: 'red', fontWeight: 'bold' }}>🚨 SOS ACTIVE</span></>}
-                    {validRoute(riderData.currentRoute) && (
-                      <><br />🛣️ {riderData.currentRoute.length} route points</>
-                    )}
+                    {validRoute(riderData.currentRoute) && <><br />🛣️ {riderData.currentRoute.length} route points</>}
                   </Popup>
                 </Marker>
               );
@@ -934,17 +932,34 @@ export default function WatcherDashboard() {
               const name = riderData.location?.name || riderId;
               const lon  = riderData.location.lon ?? riderData.location.lng;
               return (
-                <Marker key={riderId} position={[riderData.location.lat, lon]} icon={createDivIcon('#9e9e9e', name.charAt(0).toUpperCase())} opacity={0.5}>
+                <Marker key={riderId} position={[riderData.location.lat, lon]}
+                  icon={createDivIcon('#9e9e9e', name.charAt(0).toUpperCase())} opacity={0.5}>
                   <Popup><strong>{name}</strong><br />🔋 {riderData.location.battery}%<br />⚫ Offline</Popup>
                 </Marker>
               );
             })}
 
-            {geofences.map((zone) => (
-              <Circle key={zone.id} center={[zone.lat, zone.lng]} radius={zone.radiusKm * 1000} fillColor="blue" fillOpacity={0.1} color="blue">
-                <Popup>{zone.name}</Popup>
-              </Circle>
-            ))}
+            {/* ── Geofence circles — uses activeGeofences (Firebase or static) ── */}
+            {activeGeofences.map((zone, i) => {
+              const zoneLng = zone.lng;
+              if (!validCoords(zone.lat, zoneLng)) return null;
+              const color = getZoneColor(i);
+              return (
+                <Circle
+                  key={zone.id}
+                  center={[zone.lat, zoneLng]}
+                  radius={zone.radiusKm * 1000}
+                  pathOptions={{ color, fillColor: color, fillOpacity: 0.1, weight: 2 }}
+                >
+                  <Popup>
+                    <strong>{zone.name}</strong><br />
+                    <span style={{ fontSize: '12px', color: '#666' }}>
+                      {familyId && firebaseGeofences.length > 0 ? 'Custom zone' : 'Default zone'} · {zone.radiusKm} km
+                    </span>
+                  </Popup>
+                </Circle>
+              );
+            })}
 
             {chargingStations.map((s) => (
               <Marker key={s.id} position={[s.lat, s.lon]} icon={createChargingIcon()}>
@@ -969,7 +984,6 @@ export default function WatcherDashboard() {
         <div>
           <h3 style={{ margin: '0 0 12px', color: '#fff' }}>Recent Alerts</h3>
 
-          {/* NEW: sticky pending SOS banners — shown above the alerts scroll */}
           {pendingSosEntries.length > 0 && (
             <div style={{ marginBottom: '12px' }}>
               <p style={{ margin: '0 0 8px', fontSize: '11px', color: '#ff5252', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px' }}>
@@ -1004,12 +1018,7 @@ export default function WatcherDashboard() {
           <div className="watcher-alerts-scroll">
             {!alerts.length && <p style={{ color: '#666', fontSize: '14px' }}>No alerts yet.</p>}
             {alerts.map((alert) => (
-              <AlertItem
-                key={alert.id}
-                alert={alert}
-                riders={riders}
-                onSendReminder={handleSendReminder}
-              />
+              <AlertItem key={alert.id} alert={alert} onSendReminder={handleSendReminder} />
             ))}
           </div>
         </div>
@@ -1020,8 +1029,7 @@ export default function WatcherDashboard() {
         <div className="watcher-trip-header">
           <h3 style={{ margin: 0, color: '#fff' }}>📊 Trip History</h3>
           <select
-            id="filter-days"
-            name="filter-days"
+            id="filter-days" name="filter-days"
             value={filterDays}
             onChange={(e) => setFilterDays(Number(e.target.value))}
             style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #444', fontSize: '14px', background: '#2a2a2a', color: '#e0e0e0' }}
@@ -1056,7 +1064,6 @@ export default function WatcherDashboard() {
         );
       })()}
 
-      {/* CHANGED: onClose now passes dismissedSosRider to handleSOSModalClose */}
       {sosRider && (
         <SOSAlertModal
           sosRider={sosRider}
