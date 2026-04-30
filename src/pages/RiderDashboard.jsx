@@ -351,7 +351,10 @@ export default function RiderDashboard({ riderName, isActive = true }) {
         avgSpeedKmh:       tripDataObj.avgSpeedKmh,
         battery:           batteryRef.current,
         batteryUsedPercent: tripDataObj.batteryUsedPercent,
-        worstAxis,
+        batteryRemaining:   tripDataObj.batteryRemaining,   
+        worstAxis:         tripDataObj.worstAxis,
+        rideStyle:         tripDataObj.rideStyle,
+        consumptionWh:      consumptionRate,
         timestamp:         tripDataObj.timestamp,
         route:             finalRoute,
       });
@@ -468,7 +471,10 @@ export default function RiderDashboard({ riderName, isActive = true }) {
         avgSpeedKmh:       tripDataObj.avgSpeedKmh,
         battery,
         batteryUsedPercent: tripDataObj.batteryUsedPercent,
-        worstAxis,
+        batteryRemaining:   tripDataObj.batteryRemaining,   
+        worstAxis:         tripDataObj.worstAxis,
+        rideStyle:         tripDataObj.rideStyle, 
+        consumptionWh:      consumptionRate, 
         timestamp:         tripDataObj.timestamp,
         route:             simulatedRoute,
       });
