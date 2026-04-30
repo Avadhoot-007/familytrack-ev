@@ -1,78 +1,120 @@
-import { useState, useEffect } from 'react';
-import { ref, get } from 'firebase/database';
-import { db } from '../config/firebase';
-import './RiderLeaderboard.css';
+import { useState, useEffect } from "react";
+import { ref, get } from "firebase/database";
+import { db } from "../config/firebase";
+import { useStore } from "../store";
+import "./RiderLeaderboard.css";
 
 export default function RiderLeaderboard() {
   const [riders, setRiders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sortBy, setSortBy] = useState('avgScore');
+  const [sortBy, setSortBy] = useState("avgScore");
   const [error, setError] = useState(null);
 
-  const medals = ['🥇', '🥈', '🥉'];
+  const medals = ["🥇", "🥈", "🥉"];
+
+  const localTripHistory = useStore((s) => s.tripHistory);
+  const localRiderName = useStore((s) => s.riderName);
 
   useEffect(() => {
     loadLeaderboardData();
     const interval = setInterval(loadLeaderboardData, 10000);
     return () => clearInterval(interval);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localTripHistory]);
+
+  const buildRiderMap = (map, riderId, displayName, tripsList) => {
+    if (!tripsList.length) return;
+
+    const totalTrips = tripsList.length;
+    const totalDistance = tripsList.reduce(
+      (sum, t) => sum + (t.distanceKm || t.distance || 0),
+      0,
+    );
+    const avgScore = Math.round(
+      tripsList.reduce((sum, t) => sum + (t.score || t.ecoScore || 0), 0) /
+        totalTrips,
+    );
+    const bestScore = Math.max(
+      ...tripsList.map((t) => t.score || t.ecoScore || 0),
+    );
+    const worstScore = Math.min(
+      ...tripsList.map((t) => t.score || t.ecoScore || 0),
+    );
+    const timestamps = tripsList
+      .map((t) => new Date(t.timestamp).getTime())
+      .filter((t) => !isNaN(t));
+    if (!timestamps.length) return;
+    const lastTripTime = Math.max(...timestamps);
+
+    if (!map[riderId] || lastTripTime > map[riderId].lastTripTime) {
+      map[riderId] = {
+        riderId,
+        name: displayName || riderId,
+        avgScore,
+        bestScore,
+        worstScore,
+        totalTrips,
+        totalDistance: parseFloat(totalDistance.toFixed(1)),
+        lastTripTime,
+      };
+    }
+  };
 
   const loadLeaderboardData = async () => {
     try {
       setLoading(true);
-      const ridersRef = ref(db, 'riders');
-      const snapshot = await get(ridersRef);
+      const riderMap = {};
 
-      if (!snapshot.exists()) {
-        setRiders([]);
-        setLoading(false);
-        return;
+      // ── 1. Firebase data ───────────────────────────────────────────────
+      const snapshot = await get(ref(db, "riders"));
+      if (snapshot.exists()) {
+        const ridersData = snapshot.val();
+        for (const [riderId, riderData] of Object.entries(ridersData)) {
+          const trips = riderData.trips ? Object.values(riderData.trips) : [];
+          if (!trips.length) continue;
+          const displayName =
+            riderData.profile?.name ||
+            trips.find((t) => t.riderName)?.riderName ||
+            riderData.location?.name ||
+            riderId;
+          buildRiderMap(riderMap, riderId, displayName, trips);
+        }
       }
 
-      const ridersData = snapshot.val();
-      const leaderboardData = [];
+      // ── 2. Merge local Zustand tripHistory ────────────────────────────
+      if (localTripHistory.length > 0) {
+        const localRiderId =
+          localRiderName?.toLowerCase().replace(/\s+/g, "-") || "local-rider";
+        const displayName = localRiderName || localRiderId;
 
-      for (const [riderId, riderData] of Object.entries(ridersData)) {
-        const trips = riderData.trips || {};
-        const tripsList = Object.values(trips);
-
-        if (tripsList.length === 0) continue;
-
-        const totalTrips = tripsList.length;
-        const totalDistance = tripsList.reduce((sum, trip) => sum + (trip.distanceKm || 0), 0);
-        const avgScore = Math.round(
-          tripsList.reduce((sum, trip) => sum + (trip.score || 0), 0) / totalTrips
-        );
-        const bestScore = Math.max(...tripsList.map((t) => t.score || 0));
-        const worstScore = Math.min(...tripsList.map((t) => t.score || 0));
-
-        const timestamps = tripsList.map((t) => new Date(t.timestamp).getTime()).filter(t => !isNaN(t));
-        if (timestamps.length === 0) continue;
-        const lastTripTime = Math.max(...timestamps);
-
-        // FIX: resolve name from profile node first, then trip.riderName, then location.name, then riderId
-        const displayName =
-          riderData.profile?.name ||
-          tripsList.find(t => t.riderName)?.riderName ||
-          riderData.location?.name ||
-          riderId;
-
-        leaderboardData.push({
-          riderId,
-          name: displayName,
-          avgScore,
-          bestScore,
-          worstScore,
-          totalTrips,
-          totalDistance: parseFloat(totalDistance.toFixed(1)),
-          lastTripTime,
+        // Group by riderId in case tripHistory has multiple riders
+        const localByRider = {};
+        localTripHistory.forEach((t) => {
+          const id = t.riderId || localRiderId;
+          const name = t.riderName || displayName;
+          if (!localByRider[id]) localByRider[id] = { name, trips: [] };
+          localByRider[id].trips.push(t);
         });
+
+        for (const [id, { name, trips }] of Object.entries(localByRider)) {
+          // Only add if Firebase didn't already have this rider
+          // (Firebase is source of truth; local fills gaps)
+          if (!riderMap[id]) {
+            buildRiderMap(riderMap, id, name, trips);
+          } else {
+            // Merge: pick whichever has more trips
+            const existing = riderMap[id];
+            if (trips.length > existing.totalTrips) {
+              buildRiderMap(riderMap, id, name, trips);
+            }
+          }
+        }
       }
 
-      setRiders(leaderboardData);
+      setRiders(Object.values(riderMap));
       setError(null);
     } catch (err) {
-      console.error('Error loading leaderboard:', err);
+      console.error("Error loading leaderboard:", err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -82,11 +124,11 @@ export default function RiderLeaderboard() {
   const getSortedRiders = () => {
     const sorted = [...riders];
     switch (sortBy) {
-      case 'avgScore':
+      case "avgScore":
         return sorted.sort((a, b) => b.avgScore - a.avgScore);
-      case 'totalTrips':
+      case "totalTrips":
         return sorted.sort((a, b) => b.totalTrips - a.totalTrips);
-      case 'totalDistance':
+      case "totalDistance":
         return sorted.sort((a, b) => b.totalDistance - a.totalDistance);
       default:
         return sorted;
@@ -94,30 +136,28 @@ export default function RiderLeaderboard() {
   };
 
   const getScoreColor = (score) => {
-    if (score >= 90) return '#1a7e32';
-    if (score >= 70) return '#28a745';
-    if (score >= 50) return '#ffc107';
-    return '#dc3545';
+    if (score >= 90) return "#1a7e32";
+    if (score >= 70) return "#28a745";
+    if (score >= 50) return "#ffc107";
+    return "#dc3545";
   };
 
   const getScoreLabel = (score) => {
-    if (score >= 90) return 'Eco Champion';
-    if (score >= 70) return 'Good Riding';
-    if (score >= 50) return 'Room to Improve';
-    return 'Aggressive';
+    if (score >= 90) return "Eco Champion";
+    if (score >= 70) return "Good Riding";
+    if (score >= 50) return "Room to Improve";
+    return "Aggressive";
   };
 
   const formatTime = (timestamp) => {
     const date = new Date(timestamp);
-    if (isNaN(date.getTime())) return 'Invalid time';
-    const now = Date.now();
-    const diff = now - date.getTime();
+    if (isNaN(date.getTime())) return "Invalid time";
+    const diff = Date.now() - date.getTime();
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const days = Math.floor(hours / 24);
-
     if (days > 0) return `${days}d ago`;
     if (hours > 0) return `${hours}h ago`;
-    return 'just now';
+    return "just now";
   };
 
   const sortedRiders = getSortedRiders();
@@ -126,7 +166,11 @@ export default function RiderLeaderboard() {
     <div className="rider-leaderboard">
       <div className="leaderboard-header">
         <h2>🏆 Rider Leaderboard</h2>
-        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="sort-select">
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          className="sort-select"
+        >
           <option value="avgScore">Avg Eco Score</option>
           <option value="totalTrips">Most Trips</option>
           <option value="totalDistance">Most Distance</option>
@@ -138,7 +182,9 @@ export default function RiderLeaderboard() {
       {loading ? (
         <div className="loading">Loading leaderboard...</div>
       ) : sortedRiders.length === 0 ? (
-        <div className="empty-state">No trips recorded yet. Start sharing to appear on the leaderboard!</div>
+        <div className="empty-state">
+          No trips recorded yet. Start sharing to appear on the leaderboard!
+        </div>
       ) : (
         <>
           <div className="leaderboard-table">
@@ -152,7 +198,10 @@ export default function RiderLeaderboard() {
             </div>
 
             {sortedRiders.map((rider, index) => (
-              <div key={rider.riderId} className={`leaderboard-row rank-${index}`}>
+              <div
+                key={rider.riderId}
+                className={`leaderboard-row rank-${index}`}
+              >
                 <div className="col rank">
                   {index < 3 && <span className="medal">{medals[index]}</span>}
                   <span className="rank-number">#{index + 1}</span>
@@ -160,14 +209,21 @@ export default function RiderLeaderboard() {
                 <div className="col name">{rider.name}</div>
                 <div
                   className="col avg-score"
-                  style={{ color: getScoreColor(rider.avgScore), fontWeight: '600' }}
+                  style={{
+                    color: getScoreColor(rider.avgScore),
+                    fontWeight: "600",
+                  }}
                 >
                   {rider.avgScore}
-                  <span className="score-label">{getScoreLabel(rider.avgScore)}</span>
+                  <span className="score-label">
+                    {getScoreLabel(rider.avgScore)}
+                  </span>
                 </div>
                 <div className="col trips">{rider.totalTrips}</div>
                 <div className="col distance">{rider.totalDistance}</div>
-                <div className="col last-trip">{formatTime(rider.lastTripTime)}</div>
+                <div className="col last-trip">
+                  {formatTime(rider.lastTripTime)}
+                </div>
               </div>
             ))}
           </div>
@@ -179,16 +235,26 @@ export default function RiderLeaderboard() {
             </div>
             <div className="stat">
               <span className="stat-label">Total Trips</span>
-              <span className="stat-value">{sortedRiders.reduce((sum, r) => sum + r.totalTrips, 0)}</span>
+              <span className="stat-value">
+                {sortedRiders.reduce((sum, r) => sum + r.totalTrips, 0)}
+              </span>
             </div>
             <div className="stat">
               <span className="stat-label">Combined Distance</span>
-              <span className="stat-value">{sortedRiders.reduce((sum, r) => sum + r.totalDistance, 0).toFixed(1)} km</span>
+              <span className="stat-value">
+                {sortedRiders
+                  .reduce((sum, r) => sum + r.totalDistance, 0)
+                  .toFixed(1)}{" "}
+                km
+              </span>
             </div>
             <div className="stat">
               <span className="stat-label">Avg Eco Score</span>
               <span className="stat-value">
-                {Math.round(sortedRiders.reduce((sum, r) => sum + r.avgScore, 0) / sortedRiders.length)}
+                {Math.round(
+                  sortedRiders.reduce((sum, r) => sum + r.avgScore, 0) /
+                    sortedRiders.length,
+                )}
               </span>
             </div>
           </div>
