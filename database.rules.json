@@ -6,8 +6,8 @@
     },
     "families": {
       "$familyId": {
-        ".read": "auth !== null && root.child('families').child($familyId).child('members').child(auth.uid).exists()",
-        ".write": "auth !== null && (root.child('families').child($familyId).child('members').child(auth.uid).exists() || !data.exists())"
+        ".read": "auth !== null",
+        ".write": "auth !== null"
       }
     },
     "invites": {
