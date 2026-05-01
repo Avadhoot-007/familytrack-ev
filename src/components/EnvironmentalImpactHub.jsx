@@ -10,6 +10,140 @@ import {
 } from "../utils/ecoImpactCalculations";
 
 // ---------------------------------------------------------------------------
+// Streak calculation — consecutive days ending today with ≥1 trip
+// ---------------------------------------------------------------------------
+const calculateStreak = (tripHistory) => {
+  if (!tripHistory.length) return 0;
+  const tripDates = new Set(
+    tripHistory
+      .filter((t) => t.timestamp)
+      .map((t) => new Date(t.timestamp).toDateString()),
+  );
+  let streak = 0;
+  const today = new Date();
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    if (tripDates.has(d.toDateString())) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+  return streak;
+};
+
+// ---------------------------------------------------------------------------
+// Weekly progress — trips in the current Sun→Sat week
+// ---------------------------------------------------------------------------
+const getWeeklyProgress = (tripHistory) => {
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - now.getDay());
+  weekStart.setHours(0, 0, 0, 0);
+
+  const weekTrips = tripHistory.filter(
+    (t) => t.timestamp && new Date(t.timestamp) >= weekStart,
+  );
+
+  const scores = weekTrips.map((t) => t.score || t.ecoScore || 0);
+  const totalDistance = weekTrips.reduce(
+    (s, t) => s + (t.distanceKm || t.distance || 0),
+    0,
+  );
+
+  return {
+    tripCount: weekTrips.length,
+    highScoreTrips: scores.filter((s) => s >= 80).length,
+    totalDistance,
+    allAbove70: weekTrips.length >= 2 && scores.every((s) => s >= 70),
+    avgScore:
+      scores.length > 0
+        ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+        : 0,
+    daysRidden: new Set(
+      weekTrips.map((t) => new Date(t.timestamp).toDateString()),
+    ).size,
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Weekly challenge definitions
+// ---------------------------------------------------------------------------
+const WEEKLY_CHALLENGES = [
+  {
+    id: "five_trips",
+    icon: "🚴",
+    title: "5 Trips This Week",
+    desc: "Complete 5 trips in a single week",
+    target: 5,
+    unit: "trips",
+    color: "#4CAF50",
+    getValue: (wp) => Math.min(wp.tripCount, 5),
+  },
+  {
+    id: "eco_warrior",
+    icon: "🌿",
+    title: "Eco Warrior",
+    desc: "Score 80+ on 3 trips this week",
+    target: 3,
+    unit: "trips",
+    color: "#8BC34A",
+    getValue: (wp) => Math.min(wp.highScoreTrips, 3),
+  },
+  {
+    id: "distance_rider",
+    icon: "📏",
+    title: "Distance Rider",
+    desc: "Ride 50 km total this week",
+    target: 50,
+    unit: "km",
+    color: "#2196F3",
+    getValue: (wp) => parseFloat(Math.min(wp.totalDistance, 50).toFixed(1)),
+  },
+  {
+    id: "smooth_operator",
+    icon: "⚡",
+    title: "Smooth Operator",
+    desc: "Keep all trips above 70 score (min 2 trips this week)",
+    target: 1,
+    unit: "",
+    color: "#FF9800",
+    isBool: true,
+    getValue: (wp) => (wp.allAbove70 ? 1 : 0),
+  },
+  {
+    id: "streak_3",
+    icon: "🔥",
+    title: "3-Day Streak",
+    desc: "Ride on 3 consecutive days",
+    target: 3,
+    unit: "days",
+    color: "#F44336",
+    getValue: (wp, streak) => Math.min(streak, 3),
+  },
+  {
+    id: "daily_rider",
+    icon: "📅",
+    title: "4 Different Days",
+    desc: "Ride on 4 different days this week",
+    target: 4,
+    unit: "days",
+    color: "#9C27B0",
+    getValue: (wp) => Math.min(wp.daysRidden, 4),
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Days until next Monday (week reset)
+// ---------------------------------------------------------------------------
+const daysUntilReset = () => {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun
+  return day === 0 ? 7 : 7 - day;
+};
+
+// ---------------------------------------------------------------------------
 // Badge unlock animation overlay
 // ---------------------------------------------------------------------------
 function BadgeUnlockOverlay({ badge, onDone }) {
@@ -87,11 +221,81 @@ function BadgeUnlockOverlay({ badge, onDone }) {
 }
 
 // ---------------------------------------------------------------------------
+// Challenge completed animation overlay
+// ---------------------------------------------------------------------------
+function ChallengeCompleteOverlay({ challenge, onDone }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 2400);
+    return () => clearTimeout(t);
+  }, [onDone]);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.75)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9998,
+        animation: "badgeOverlayIn 0.3s ease",
+      }}
+      onClick={onDone}
+    >
+      <div
+        style={{
+          textAlign: "center",
+          animation: "badgeBounceIn 0.5s cubic-bezier(0.34,1.56,0.64,1)",
+        }}
+      >
+        <div style={{ fontSize: "72px", lineHeight: 1, marginBottom: "16px" }}>
+          {challenge.icon}
+        </div>
+        <div
+          style={{
+            background: `linear-gradient(135deg, ${challenge.color}cc, ${challenge.color})`,
+            color: "#fff",
+            borderRadius: "16px",
+            padding: "20px 32px",
+            boxShadow: `0 8px 40px ${challenge.color}66`,
+          }}
+        >
+          <p
+            style={{
+              margin: "0 0 6px",
+              fontSize: "13px",
+              fontWeight: "600",
+              opacity: 0.85,
+              textTransform: "uppercase",
+              letterSpacing: "1px",
+            }}
+          >
+            Challenge Complete!
+          </p>
+          <h2
+            style={{ margin: "0 0 6px", fontSize: "22px", fontWeight: "800" }}
+          >
+            {challenge.title}
+          </h2>
+          <p style={{ margin: 0, fontSize: "13px", opacity: 0.85 }}>
+            {challenge.desc}
+          </p>
+        </div>
+        <p style={{ color: "#888", fontSize: "12px", marginTop: "16px" }}>
+          Tap anywhere to continue
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Social Share Modal
 // ---------------------------------------------------------------------------
 function ShareModal({ isOpen, onClose, stats }) {
   const [copied, setCopied] = useState(false);
-  const [shareState, setShareState] = useState("idle"); // idle | sharing | done | error
+  const [shareState, setShareState] = useState("idle");
 
   if (!isOpen) return null;
 
@@ -105,16 +309,7 @@ function ShareModal({ isOpen, onClose, stats }) {
     unlockedBadges,
   } = stats;
 
-  const shareText = `🌱 My EV Impact on FamilyTrack EV
-
-♻️ CO₂ Saved: ${savedCO2} kg
-🌳 Tree Equivalents: ${treeEquiv}
-📏 Total Distance: ${totalDistance} km
-🚴 Trips Completed: ${totalTrips}
-🌿 Avg Eco Score: ${avgEcoScore}/100
-⭐ Best Score: ${bestEcoScore}/100${unlockedBadges.length > 0 ? `\n🏅 Badges: ${unlockedBadges.map((b) => b.label).join(", ")}` : ""}
-
-Riding green every day! 🔋⚡`;
+  const shareText = `🌱 My EV Impact on FamilyTrack EV\n\n♻️ CO₂ Saved: ${savedCO2} kg\n🌳 Tree Equivalents: ${treeEquiv}\n📏 Total Distance: ${totalDistance} km\n🚴 Trips Completed: ${totalTrips}\n🌿 Avg Eco Score: ${avgEcoScore}/100\n⭐ Best Score: ${bestEcoScore}/100${unlockedBadges.length > 0 ? `\n🏅 Badges: ${unlockedBadges.map((b) => b.label).join(", ")}` : ""}\n\nRiding green every day! 🔋⚡`;
 
   const handleNativeShare = async () => {
     if (!navigator.share) return;
@@ -135,28 +330,23 @@ Riding green every day! 🔋⚡`;
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(shareText);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
     } catch {
-      // Fallback
       const el = document.createElement("textarea");
       el.value = shareText;
       document.body.appendChild(el);
       el.select();
       document.execCommand("copy");
       document.body.removeChild(el);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
     }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
   };
 
-  const handleWhatsApp = () => {
+  const handleWhatsApp = () =>
     window.open(
       `https://wa.me/?text=${encodeURIComponent(shareText)}`,
       "_blank",
     );
-  };
-
   const handleTwitter = () => {
     const tweet = `🌱 I've saved ${savedCO2} kg CO₂ riding my EV! That's ${treeEquiv} tree equivalents 🌳 Eco Score: ${avgEcoScore}/100 #EVRiding #GreenCommute #FamilyTrackEV`;
     window.open(
@@ -164,13 +354,27 @@ Riding green every day! 🔋⚡`;
       "_blank",
     );
   };
-
-  const handleTelegram = () => {
+  const handleTelegram = () =>
     window.open(
       `https://t.me/share/url?url=${encodeURIComponent("https://familytrack-ev.web.app")}&text=${encodeURIComponent(shareText)}`,
       "_blank",
     );
-  };
+
+  const platformBtn = (color) => ({
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "4px",
+    padding: "10px 6px",
+    background: `${color}22`,
+    border: `1px solid ${color}55`,
+    borderRadius: "8px",
+    color: "#e0e0e0",
+    cursor: "pointer",
+    transition: "background 0.2s",
+    fontFamily: "Arial, sans-serif",
+  });
 
   return (
     <div
@@ -198,7 +402,6 @@ Riding green every day! 🔋⚡`;
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div
           style={{
             display: "flex",
@@ -224,8 +427,6 @@ Riding green every day! 🔋⚡`;
             ✕
           </button>
         </div>
-
-        {/* Preview card */}
         <div
           style={{
             background: "linear-gradient(135deg, #1a3a1a, #2a2a2a)",
@@ -315,10 +516,7 @@ Riding green every day! 🔋⚡`;
             </div>
           )}
         </div>
-
-        {/* Share buttons */}
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {/* Native share — mobile only */}
           {navigator.share && (
             <button
               onClick={handleNativeShare}
@@ -341,8 +539,6 @@ Riding green every day! 🔋⚡`;
                   : "📤 Share via..."}
             </button>
           )}
-
-          {/* Platform buttons */}
           <div
             style={{
               display: "grid",
@@ -363,8 +559,6 @@ Riding green every day! 🔋⚡`;
               <span style={{ fontSize: "11px" }}>Telegram</span>
             </button>
           </div>
-
-          {/* Copy text */}
           <button
             onClick={handleCopy}
             style={{
@@ -388,21 +582,438 @@ Riding green every day! 🔋⚡`;
   );
 }
 
-const platformBtn = (color) => ({
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: "4px",
-  padding: "10px 6px",
-  background: `${color}22`,
-  border: `1px solid ${color}55`,
-  borderRadius: "8px",
-  color: "#e0e0e0",
-  cursor: "pointer",
-  transition: "background 0.2s",
-  fontFamily: "Arial, sans-serif",
-});
+// ---------------------------------------------------------------------------
+// Challenges Tab
+// ---------------------------------------------------------------------------
+function ChallengesTab({ tripHistory }) {
+  const streak = calculateStreak(tripHistory);
+  const wp = getWeeklyProgress(tripHistory);
+  const resetDays = daysUntilReset();
+
+  // Track previously completed challenges for animation
+  const prevCompletedRef = useRef(null);
+  const [newlyCompleted, setNewlyCompleted] = useState(null);
+
+  const challenges = WEEKLY_CHALLENGES.map((c) => {
+    const value = c.getValue(wp, streak);
+    const completed = value >= c.target;
+    const pct = Math.min(100, Math.round((value / c.target) * 100));
+    return { ...c, value, completed, pct };
+  });
+
+  const completedCount = challenges.filter((c) => c.completed).length;
+
+  // Detect newly completed challenge
+  useEffect(() => {
+    const completedIds = new Set(
+      challenges.filter((c) => c.completed).map((c) => c.id),
+    );
+    if (prevCompletedRef.current === null) {
+      prevCompletedRef.current = completedIds;
+      return;
+    }
+    for (const id of completedIds) {
+      if (!prevCompletedRef.current.has(id)) {
+        const ch = challenges.find((c) => c.id === id);
+        if (ch) setNewlyCompleted(ch);
+        break;
+      }
+    }
+    prevCompletedRef.current = completedIds;
+  }, [tripHistory]);
+
+  // Streak fire color
+  const streakColor =
+    streak >= 7
+      ? "#FF5722"
+      : streak >= 3
+        ? "#FF9800"
+        : streak >= 1
+          ? "#ffc107"
+          : "#444";
+
+  return (
+    <div>
+      {newlyCompleted && (
+        <ChallengeCompleteOverlay
+          challenge={newlyCompleted}
+          onDone={() => setNewlyCompleted(null)}
+        />
+      )}
+
+      {/* ── Streak card ───────────────────────────────────────────────── */}
+      <div
+        className="eco-card"
+        style={{ borderLeft: `4px solid ${streakColor}`, marginBottom: "16px" }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "12px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+            <div style={{ textAlign: "center" }}>
+              <div
+                style={{
+                  fontSize: "52px",
+                  lineHeight: 1,
+                  filter: streak > 0 ? "none" : "grayscale(1) opacity(0.3)",
+                }}
+              >
+                🔥
+              </div>
+            </div>
+            <div>
+              <div
+                style={{
+                  fontSize: "40px",
+                  fontWeight: "800",
+                  color: streakColor,
+                  lineHeight: 1,
+                }}
+              >
+                {streak}
+              </div>
+              <div
+                style={{ fontSize: "13px", color: "#888", marginTop: "2px" }}
+              >
+                day streak
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: "8px" }}>
+            {[1, 2, 3, 4, 5, 6, 7].map((day) => {
+              // Check if this day in the current week had a trip
+              const now = new Date();
+              const weekStart = new Date(now);
+              weekStart.setDate(now.getDate() - now.getDay());
+              weekStart.setHours(0, 0, 0, 0);
+              const d = new Date(weekStart);
+              d.setDate(weekStart.getDate() + (day - 1));
+              const hasTrip = tripHistory.some((t) => {
+                if (!t.timestamp) return false;
+                const td = new Date(t.timestamp);
+                return td.toDateString() === d.toDateString();
+              });
+              const isToday = d.toDateString() === now.toDateString();
+              const isPast = d < now;
+              return (
+                <div
+                  key={day}
+                  style={{
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "11px",
+                    fontWeight: "700",
+                    background: hasTrip
+                      ? streakColor
+                      : isToday
+                        ? "#2a2a2a"
+                        : isPast
+                          ? "#111"
+                          : "#1a1a1a",
+                    border: isToday
+                      ? `2px solid ${streakColor}`
+                      : "2px solid transparent",
+                    color: hasTrip ? "#fff" : "#444",
+                  }}
+                >
+                  {hasTrip ? "✓" : ["S", "M", "T", "W", "T", "F", "S"][day - 1]}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {streak === 0 && (
+          <p style={{ margin: "12px 0 0", color: "#555", fontSize: "12px" }}>
+            Complete a trip today to start your streak!
+          </p>
+        )}
+        {streak >= 7 && (
+          <div
+            style={{
+              marginTop: "12px",
+              padding: "8px 12px",
+              background: "rgba(255,87,34,0.1)",
+              border: "1px solid rgba(255,87,34,0.3)",
+              borderRadius: "6px",
+              fontSize: "12px",
+              color: "#FF5722",
+              fontWeight: "600",
+            }}
+          >
+            🏆 7-Day Champion! Incredible consistency!
+          </div>
+        )}
+      </div>
+
+      {/* ── Weekly reset info ─────────────────────────────────────────── */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "14px",
+        }}
+      >
+        <div>
+          <h2 style={{ margin: 0, color: "#fff", fontSize: "16px" }}>
+            🎯 Weekly Challenges
+          </h2>
+          <p style={{ margin: "2px 0 0", color: "#555", fontSize: "11px" }}>
+            Resets in {resetDays} day{resetDays !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <div
+          style={{
+            padding: "6px 14px",
+            borderRadius: "20px",
+            background:
+              completedCount === challenges.length
+                ? "rgba(76,175,80,0.15)"
+                : "#1a1a1a",
+            border: `1px solid ${completedCount === challenges.length ? "#4CAF50" : "#333"}`,
+            fontSize: "13px",
+            fontWeight: "700",
+            color: completedCount === challenges.length ? "#4CAF50" : "#666",
+          }}
+        >
+          {completedCount}/{challenges.length} done
+        </div>
+      </div>
+
+      {/* ── Challenge cards ───────────────────────────────────────────── */}
+      {tripHistory.length === 0 ? (
+        <div className="eco-card">
+          <p className="no-data">Complete trips to unlock weekly challenges.</p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {challenges.map((ch) => (
+            <div
+              key={ch.id}
+              className="eco-card"
+              style={{
+                padding: "16px 20px",
+                marginBottom: 0,
+                borderLeft: `4px solid ${ch.completed ? ch.color : "#333"}`,
+                opacity: ch.completed ? 1 : 0.9,
+                position: "relative",
+                overflow: "hidden",
+              }}
+            >
+              {/* Completed shimmer background */}
+              {ch.completed && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    background: `linear-gradient(135deg, ${ch.color}08, transparent)`,
+                    pointerEvents: "none",
+                  }}
+                />
+              )}
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "14px",
+                  position: "relative",
+                }}
+              >
+                {/* Icon */}
+                <div
+                  style={{
+                    fontSize: "28px",
+                    lineHeight: 1,
+                    flexShrink: 0,
+                    marginTop: "2px",
+                  }}
+                >
+                  {ch.completed ? "✅" : ch.icon}
+                </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontWeight: "700",
+                        fontSize: "14px",
+                        color: ch.completed ? ch.color : "#fff",
+                      }}
+                    >
+                      {ch.title}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: "700",
+                        color: ch.completed ? ch.color : "#888",
+                        whiteSpace: "nowrap",
+                        marginLeft: "12px",
+                      }}
+                    >
+                      {ch.isBool
+                        ? ch.completed
+                          ? "Done!"
+                          : "Not yet"
+                        : `${ch.value}${ch.unit ? ` ${ch.unit}` : ""} / ${ch.target}${ch.unit ? ` ${ch.unit}` : ""}`}
+                    </span>
+                  </div>
+                  <p
+                    style={{
+                      margin: "0 0 10px",
+                      fontSize: "12px",
+                      color: "#666",
+                    }}
+                  >
+                    {ch.desc}
+                  </p>
+
+                  {/* Progress bar */}
+                  {!ch.isBool && (
+                    <div
+                      style={{
+                        background: "#111",
+                        borderRadius: "4px",
+                        height: "6px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: "100%",
+                          width: `${ch.pct}%`,
+                          background: ch.completed
+                            ? `linear-gradient(90deg, ${ch.color}, ${ch.color}cc)`
+                            : `linear-gradient(90deg, ${ch.color}88, ${ch.color}44)`,
+                          borderRadius: "4px",
+                          transition: "width 0.5s ease",
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {ch.isBool && !ch.completed && (
+                    <div
+                      style={{
+                        background: "#111",
+                        borderRadius: "4px",
+                        height: "6px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: "100%",
+                          width: "0%",
+                          background: ch.color,
+                          borderRadius: "4px",
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {ch.isBool && ch.completed && (
+                    <div
+                      style={{
+                        background: `${ch.color}22`,
+                        borderRadius: "4px",
+                        height: "6px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: "100%",
+                          width: "100%",
+                          background: ch.color,
+                          borderRadius: "4px",
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── This week summary ─────────────────────────────────────────── */}
+      {tripHistory.length > 0 && (
+        <div className="eco-card" style={{ marginTop: "16px" }}>
+          <h2 style={{ margin: "0 0 14px", fontSize: "15px", color: "#fff" }}>
+            📊 This Week So Far
+          </h2>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(110px,1fr))",
+              gap: "10px",
+            }}
+          >
+            {[
+              { label: "Trips", val: wp.tripCount, icon: "🚴" },
+              {
+                label: "Distance",
+                val: `${wp.totalDistance.toFixed(1)} km`,
+                icon: "📏",
+              },
+              { label: "Avg Score", val: `${wp.avgScore}/100`, icon: "🌿" },
+              { label: "Days Ridden", val: wp.daysRidden, icon: "📅" },
+            ].map(({ label, val, icon }) => (
+              <div
+                key={label}
+                style={{
+                  background: "#111",
+                  borderRadius: "8px",
+                  padding: "12px",
+                  textAlign: "center",
+                }}
+              >
+                <div style={{ fontSize: "18px", marginBottom: "4px" }}>
+                  {icon}
+                </div>
+                <div
+                  style={{ fontSize: "20px", fontWeight: "700", color: "#fff" }}
+                >
+                  {val}
+                </div>
+                <div
+                  style={{
+                    fontSize: "10px",
+                    color: "#555",
+                    textTransform: "uppercase",
+                    marginTop: "2px",
+                  }}
+                >
+                  {label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -419,7 +1030,6 @@ const EnvironmentalImpactHub = ({
   const [tripLimit, setTripLimit] = useState(5);
   const [showShareModal, setShowShareModal] = useState(false);
 
-  // Badge animation state
   const [newlyUnlocked, setNewlyUnlocked] = useState(null);
   const prevUnlockedIdsRef = useRef(null);
 
@@ -549,7 +1159,6 @@ const EnvironmentalImpactHub = ({
           onDone={() => setNewlyUnlocked(null)}
         />
       )}
-
       <ShareModal
         isOpen={showShareModal}
         onClose={() => setShowShareModal(false)}
@@ -558,121 +1167,51 @@ const EnvironmentalImpactHub = ({
 
       <style>{`
         @keyframes badgeOverlayIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes badgeBounceIn {
-          from { opacity: 0; transform: scale(0.3); }
-          to   { opacity: 1; transform: scale(1); }
-        }
-        @keyframes badgeSpin {
-          from { transform: rotate(-20deg) scale(0.8); }
-          to   { transform: rotate(0deg) scale(1); }
-        }
-        @keyframes badgeGlow {
-          from { box-shadow: 0 8px 40px rgba(255,193,7,0.4); }
-          to   { box-shadow: 0 8px 60px rgba(255,193,7,0.8); }
-        }
-        @keyframes badgeCardPulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(255,193,7,0); }
-          50%       { box-shadow: 0 0 0 8px rgba(255,193,7,0.25); }
-        }
+        @keyframes badgeBounceIn { from { opacity: 0; transform: scale(0.3); } to { opacity: 1; transform: scale(1); } }
+        @keyframes badgeSpin { from { transform: rotate(-20deg) scale(0.8); } to { transform: rotate(0deg) scale(1); } }
+        @keyframes badgeGlow { from { box-shadow: 0 8px 40px rgba(255,193,7,0.4); } to { box-shadow: 0 8px 60px rgba(255,193,7,0.8); } }
+        @keyframes badgeCardPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,193,7,0); } 50% { box-shadow: 0 0 0 8px rgba(255,193,7,0.25); } }
         .badge-new { animation: badgeCardPulse 1.5s ease 3; }
-        .eco-card {
-          background: #2a2a2a; border-radius: 12px; padding: 20px;
-          margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-          border: 1px solid #404040;
-        }
+        .eco-card { background: #2a2a2a; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border: 1px solid #404040; }
         .eco-card h2 { color: #fff; margin: 0 0 16px; font-size: 18px; }
-        .impact-grid {
-          display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;
-        }
-        .impact-box {
-          color: white; padding: 18px; border-radius: 10px;
-          text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        }
+        .impact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+        .impact-box { color: white; padding: 18px; border-radius: 10px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
         .impact-box h3 { margin: 0 0 8px; font-size: 13px; opacity: 0.9; font-weight: 500; }
         .impact-box .big-num { font-size: 28px; font-weight: bold; }
         .impact-box .sub { font-size: 11px; opacity: 0.8; margin-top: 4px; }
-        .overview-grid {
-          display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-          gap: 12px; margin-bottom: 20px;
-        }
-        .stat-tile {
-          background: #333; border: 1px solid #444; border-radius: 8px;
-          padding: 14px; text-align: center;
-        }
+        .overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .stat-tile { background: #333; border: 1px solid #444; border-radius: 8px; padding: 14px; text-align: center; }
         .stat-tile .val { font-size: 24px; font-weight: 700; color: #fff; }
         .stat-tile .lbl { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
-        .badge-grid {
-          display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-          gap: 10px; margin-top: 14px;
-        }
-        .badge-unlocked {
-          background: linear-gradient(135deg, #ffc107, #ffb300);
-          color: #1a1a1a; font-weight: bold;
-          box-shadow: 0 4px 12px rgba(255,193,7,0.3);
-          border-radius: 8px; padding: 12px; text-align: center; cursor: pointer;
-          transition: transform 0.2s;
-        }
+        .badge-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 14px; }
+        .badge-unlocked { background: linear-gradient(135deg, #ffc107, #ffb300); color: #1a1a1a; font-weight: bold; box-shadow: 0 4px 12px rgba(255,193,7,0.3); border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; transition: transform 0.2s; }
         .badge-unlocked:hover { transform: scale(1.05); }
-        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #404040; }
-        .tab {
-          padding: 10px 20px; background: none; border: none; cursor: pointer;
-          font-size: 14px; font-weight: 500; color: #888;
-          border-bottom: 3px solid transparent; transition: all 0.2s;
-        }
+        .tabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid #404040; flex-wrap: wrap; }
+        .tab { padding: 10px 16px; background: none; border: none; cursor: pointer; font-size: 13px; font-weight: 500; color: #888; border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap; }
         .tab.active { color: #4CAF50; border-bottom-color: #4CAF50; }
-        .tab:hover  { color: #aaa; }
+        .tab:hover { color: #aaa; }
         .leaderboard-table { width: 100%; border-collapse: collapse; }
-        .leaderboard-table th {
-          background: #1a1a1a; padding: 12px; text-align: left;
-          font-size: 12px; font-weight: 600; color: #4CAF50; border-bottom: 2px solid #404040;
-        }
+        .leaderboard-table th { background: #1a1a1a; padding: 12px; text-align: left; font-size: 12px; font-weight: 600; color: #4CAF50; border-bottom: 2px solid #404040; }
         .leaderboard-table td { padding: 12px; border-bottom: 1px solid #404040; color: #e0e0e0; }
         .leaderboard-table tr:hover { background: #333; }
-        .rank-badge {
-          display: inline-flex; width: 28px; height: 28px;
-          background: linear-gradient(135deg, #ffc107, #ffb300);
-          border-radius: 50%; align-items: center; justify-content: center;
-          font-weight: bold; color: #1a1a1a; font-size: 12px;
-        }
-        .coaching-tip-row {
-          padding: 12px; background: #333; border-radius: 8px; margin-bottom: 10px;
-          display: flex; gap: 10px; align-items: flex-start;
-        }
-        .btn-primary {
-          background: linear-gradient(135deg, #4CAF50, #45a049);
-          color: white; border: none; padding: 10px 20px;
-          border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;
-        }
-        .btn-secondary {
-          background: #404040; color: #e0e0e0; border: 1px solid #555;
-          padding: 10px 20px; border-radius: 6px; cursor: pointer;
-          font-size: 13px; font-weight: 600; transition: all 0.2s;
-        }
-        .btn-share {
-          background: linear-gradient(135deg, #1a7e32, #28a745);
-          color: white; border: none; padding: 10px 20px;
-          border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;
-          transition: all 0.2s; display: flex; align-items: center; gap: 6px;
-        }
+        .rank-badge { display: inline-flex; width: 28px; height: 28px; background: linear-gradient(135deg, #ffc107, #ffb300); border-radius: 50%; align-items: center; justify-content: center; font-weight: bold; color: #1a1a1a; font-size: 12px; }
+        .coaching-tip-row { padding: 12px; background: #333; border-radius: 8px; margin-bottom: 10px; display: flex; gap: 10px; align-items: flex-start; }
+        .btn-primary { background: linear-gradient(135deg, #4CAF50, #45a049); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s; }
+        .btn-secondary { background: #404040; color: #e0e0e0; border: 1px solid #555; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s; }
+        .btn-share { background: linear-gradient(135deg, #1a7e32, #28a745); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
         .btn-share:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(40,167,69,0.4); }
-        .btn-small {
-          background: #404040; color: #e0e0e0; border: 1px solid #555;
-          padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; transition: all 0.2s;
-        }
+        .btn-small { background: #404040; color: #e0e0e0; border: 1px solid #555; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; transition: all 0.2s; }
         .btn-small:hover { background: #555; }
         .trip-card { padding: 14px; background: #333; border-radius: 8px; margin-bottom: 10px; }
-        .trip-card-grid {
-          display: grid; grid-template-columns: repeat(auto-fit, minmax(100px,1fr));
-          gap: 10px; margin-bottom: 8px;
-        }
+        .trip-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px,1fr)); gap: 10px; margin-bottom: 8px; }
         .trip-card-field { font-size: 12px; }
         .trip-card-field .f-label { color: #888; margin-bottom: 2px; }
-        .trip-card-field .f-val   { font-weight: 600; color: #e0e0e0; }
+        .trip-card-field .f-val { font-weight: 600; color: #e0e0e0; }
         .no-data { color: #666; text-align: center; padding: 30px 0; font-size: 14px; }
       `}</style>
 
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        {/* ── Header ─────────────────────────────────────────────────────── */}
+        {/* ── Header ───────────────────────────────────────────────────── */}
         <div
           className="eco-card"
           style={{
@@ -710,7 +1249,7 @@ const EnvironmentalImpactHub = ({
           </div>
         </div>
 
-        {/* ── Top metrics ────────────────────────────────────────────────── */}
+        {/* ── Top metrics ──────────────────────────────────────────────── */}
         <div className="eco-card">
           <h2>Your Impact</h2>
           <div className="impact-grid">
@@ -753,7 +1292,7 @@ const EnvironmentalImpactHub = ({
           </div>
         </div>
 
-        {/* ── Badges ─────────────────────────────────────────────────────── */}
+        {/* ── Badges ───────────────────────────────────────────────────── */}
         <div className="eco-card">
           <div
             style={{
@@ -771,7 +1310,6 @@ const EnvironmentalImpactHub = ({
               {showBadges ? "Hide" : "View All"}
             </button>
           </div>
-
           {unlockedBadges.length > 0 ? (
             <>
               <p
@@ -814,7 +1352,6 @@ const EnvironmentalImpactHub = ({
               No badges unlocked yet. Start riding!
             </p>
           )}
-
           {showBadges &&
             (() => {
               const lockedBadges = badges.filter((b) => !b.unlocked);
@@ -909,17 +1446,6 @@ const EnvironmentalImpactHub = ({
                               }}
                             />
                           </div>
-                          <p
-                            style={{
-                              margin: "5px 0 0",
-                              fontSize: "11px",
-                              color: "#666",
-                            }}
-                          >
-                            Target: {b.co2} kg CO₂ —{" "}
-                            {(b.co2 - savedCO2 * (pct / 100)).toFixed(2)} kg
-                            remaining
-                          </p>
                         </div>
                       );
                     })}
@@ -927,7 +1453,6 @@ const EnvironmentalImpactHub = ({
                 </div>
               );
             })()}
-
           {nextBadge?.maxReached && (
             <div
               style={{
@@ -952,7 +1477,7 @@ const EnvironmentalImpactHub = ({
           )}
         </div>
 
-        {/* ── Coaching Tips ───────────────────────────────────────────────── */}
+        {/* ── Coaching Tips ─────────────────────────────────────────────── */}
         {currentTips.length > 0 && (
           <div className="eco-card">
             <div
@@ -977,15 +1502,7 @@ const EnvironmentalImpactHub = ({
                   key={i}
                   className="coaching-tip-row"
                   style={{
-                    borderLeft: `3px solid ${
-                      tip.priority === "critical"
-                        ? "#dc3545"
-                        : tip.priority === "high"
-                          ? "#ff9800"
-                          : tip.priority === "info"
-                            ? "#2196F3"
-                            : "#28a745"
-                    }`,
+                    borderLeft: `3px solid ${tip.priority === "critical" ? "#dc3545" : tip.priority === "high" ? "#ff9800" : tip.priority === "info" ? "#2196F3" : "#28a745"}`,
                   }}
                 >
                   <span style={{ fontSize: "20px" }}>{tip.icon}</span>
@@ -1018,7 +1535,7 @@ const EnvironmentalImpactHub = ({
           </div>
         )}
 
-        {/* ── Tabs ────────────────────────────────────────────────────────── */}
+        {/* ── Tabs ─────────────────────────────────────────────────────── */}
         <div className="tabs">
           <button
             className={`tab ${viewMode === "overview" ? "active" : ""}`}
@@ -1041,9 +1558,15 @@ const EnvironmentalImpactHub = ({
           >
             🏅 Leaderboard
           </button>
+          <button
+            className={`tab ${viewMode === "challenges" ? "active" : ""}`}
+            onClick={() => setViewMode("challenges")}
+          >
+            🎯 Challenges
+          </button>
         </div>
 
-        {/* ── OVERVIEW TAB ────────────────────────────────────────────────── */}
+        {/* ── OVERVIEW TAB ─────────────────────────────────────────────── */}
         {viewMode === "overview" && (
           <div className="eco-card">
             <h2>Riding Summary</h2>
@@ -1094,7 +1617,6 @@ const EnvironmentalImpactHub = ({
                     <div className="lbl">Badges Earned</div>
                   </div>
                 </div>
-
                 <h2 style={{ marginBottom: "12px" }}>Score Distribution</h2>
                 {(() => {
                   const eco = tripHistory.filter(
@@ -1162,7 +1684,6 @@ const EnvironmentalImpactHub = ({
                     </div>
                   );
                 })()}
-
                 <h2 style={{ margin: "20px 0 12px" }}>Recent Trips</h2>
                 {tripHistory
                   .slice(-3)
@@ -1236,7 +1757,7 @@ const EnvironmentalImpactHub = ({
           </div>
         )}
 
-        {/* ── TRIP DETAILS TAB ────────────────────────────────────────────── */}
+        {/* ── TRIP DETAILS TAB ─────────────────────────────────────────── */}
         {viewMode === "detailed" && (
           <div className="eco-card">
             <h2>Trip History</h2>
@@ -1267,7 +1788,6 @@ const EnvironmentalImpactHub = ({
                           hour: "2-digit",
                           minute: "2-digit",
                         });
-
                     return (
                       <div
                         key={idx}
@@ -1461,7 +1981,7 @@ const EnvironmentalImpactHub = ({
           </div>
         )}
 
-        {/* ── LEADERBOARD TAB ─────────────────────────────────────────────── */}
+        {/* ── LEADERBOARD TAB ──────────────────────────────────────────── */}
         {viewMode === "leaderboard" && (
           <div className="eco-card">
             <h2>🏅 Eco Leaderboard</h2>
@@ -1518,6 +2038,11 @@ const EnvironmentalImpactHub = ({
               </table>
             )}
           </div>
+        )}
+
+        {/* ── CHALLENGES TAB ───────────────────────────────────────────── */}
+        {viewMode === "challenges" && (
+          <ChallengesTab tripHistory={tripHistory} />
         )}
 
         <p
