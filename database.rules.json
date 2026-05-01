@@ -21,6 +21,10 @@
         ".read": "auth !== null",
         ".write": "auth !== null && auth.uid === $uid"
       }
+    },
+    "config": {
+      ".read": true,
+      ".write": false
     }
   }
 }
