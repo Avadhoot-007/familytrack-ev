@@ -5,7 +5,10 @@ import { auth, db, googleProvider } from "./config/firebase";
 import RiderDashboard from "./pages/RiderDashboard";
 import WatcherDashboard from "./pages/WatcherDashboardPage";
 import FamilyPanel from "./components/FamilyPanel";
+import AdminPanel from "./components/AdminPanel";
 import { hydrateTripsFromStorage, useStore } from "./store";
+import { setEcoConstants } from "./utils/ecoScoring";
+import { setImpactConstants } from "./utils/ecoImpactCalculations";
 
 const makeInviteCode = () =>
   Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -33,7 +36,6 @@ function FamilySetup({ user, onDone }) {
       const familyRef = push(ref(db, "families"));
       const familyId = familyRef.key;
 
-      // Write family node — include inviteCode so FamilyPanel can retrieve it
       await set(familyRef, {
         createdBy: user.uid,
         createdAt: new Date().toISOString(),
@@ -41,14 +43,12 @@ function FamilySetup({ user, onDone }) {
         members: { [user.uid]: role },
       });
 
-      // Write invite lookup node
       await set(ref(db, `invites/${newCode}`), {
         familyId,
         createdBy: user.uid,
         createdAt: new Date().toISOString(),
       });
 
-      // Write user profile
       await set(ref(db, `users/${user.uid}`), {
         displayName: user.displayName,
         email: user.email,
@@ -88,7 +88,6 @@ function FamilySetup({ user, onDone }) {
 
       const { familyId } = inviteSnap.val();
 
-      // Write user profile FIRST
       await set(ref(db, `users/${user.uid}`), {
         displayName: user.displayName,
         email: user.email,
@@ -97,7 +96,6 @@ function FamilySetup({ user, onDone }) {
         joinedAt: new Date().toISOString(),
       });
 
-      // Then add to family members
       await update(ref(db, `families/${familyId}/members`), {
         [user.uid]: role,
       });
@@ -263,7 +261,6 @@ function FamilySetup({ user, onDone }) {
           <>
             <RoleSelector />
             {error && <div style={s.error}>{error}</div>}
-
             {generatedCode ? (
               <>
                 <p style={{ ...s.label, color: "#4CAF50" }}>
@@ -524,6 +521,11 @@ function AuthScreen({ onGuest, onGoogle, loading, error }) {
 // ── Main App ──────────────────────────────────────────────────────────────────
 
 export default function App() {
+  // ── Admin route — completely isolated, no auth/store involvement ──────────
+  if (window.location.pathname === "/admin") {
+    return <AdminPanel />;
+  }
+
   const [view, setView] = useState("rider");
   const [authState, setAuthState] = useState("loading");
   const [googleUser, setGoogleUser] = useState(null);
@@ -531,7 +533,6 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
 
-  // Read from store — stable selectors (no destructuring)
   const setGoogleUserStore = useStore((s) => s.setGoogleUser);
   const setGuest = useStore((s) => s.setGuest);
   const clearAuth = useStore((s) => s.clearAuth);
@@ -546,12 +547,23 @@ export default function App() {
     hydrateTripsFromStorage().then(() => setIsHydrated(true));
   }, []);
 
+  // ── Fetch eco constants from Firebase on mount ───────────────────────────
+  useEffect(() => {
+    get(ref(db, "config/ecoConstants"))
+      .then((snap) => {
+        if (snap.exists()) {
+          const c = snap.val();
+          setEcoConstants(c);
+          setImpactConstants(c);
+        }
+      })
+      .catch((e) => console.warn("ecoConstants fetch failed:", e));
+  }, []);
+
   // ── Auth state listener ──────────────────────────────────────────────────
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
-      // No Firebase user
       if (!user) {
-        // Check store snapshot directly — avoids stale closure
         const { isGuest, riderName } = useStore.getState();
         if (isGuest && riderName) {
           setAuthState("authenticated");
@@ -561,7 +573,6 @@ export default function App() {
         return;
       }
 
-      // Anonymous — treat as unauthenticated
       if (user.isAnonymous) {
         setAuthState("unauthenticated");
         return;
@@ -589,7 +600,7 @@ export default function App() {
     });
     return () => unsub();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally empty — reads store snapshot inside handler
+  }, []);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleGoogle = async () => {
@@ -597,7 +608,6 @@ export default function App() {
     setAuthError("");
     try {
       await signInWithPopup(auth, googleProvider);
-      // onAuthStateChanged fires next — no need to set state here
     } catch (e) {
       if (e.code !== "auth/popup-closed-by-user") {
         setAuthError(e.message);
@@ -607,18 +617,16 @@ export default function App() {
   };
 
   const handleGuest = (name) => {
-    setGuest(name.trim()); // role defaults to 'rider' in store
+    setGuest(name.trim());
     setAuthState("authenticated");
   };
 
-  // FamilySetup calls this after create or join
   const handleFamilyDone = (data) => {
     if (!data) {
       setAuthState("authenticated");
       return;
     }
     const { familyId, role } = data;
-    // Only update store if we actually have valid data
     if (familyId && role && googleUser) {
       setGoogleUserStore({
         uid: googleUser.uid,
@@ -631,9 +639,6 @@ export default function App() {
   };
 
   const handleSignOut = async () => {
-    // Sign out from Firebase first, then clear store
-    // This order prevents the auth listener from seeing a cleared store
-    // and incorrectly routing to 'unauthenticated' before sign-out completes
     try {
       if (auth.currentUser && !auth.currentUser.isAnonymous) {
         await signOut(auth);
@@ -755,31 +760,24 @@ export default function App() {
             flexWrap: "wrap",
           }}
         >
-          {/* Rider tab */}
           <button
             onClick={() => setView("rider")}
             style={tabStyle(view === "rider", "#4CAF50")}
           >
             👤 Rider
           </button>
-
-          {/* Watcher tab */}
           <button
             onClick={() => setView("watcher")}
             style={tabStyle(view === "watcher", "#2196F3")}
           >
             👁️ Watcher
           </button>
-
-          {/* Family tab — always visible; useful for guests too (shows "no family" state) */}
           <button
             onClick={() => setView("family")}
             style={tabStyle(view === "family", "#ff9800")}
           >
             👨‍👩‍👧 Family
           </button>
-
-          {/* Sign out */}
           <button
             onClick={handleSignOut}
             style={{
