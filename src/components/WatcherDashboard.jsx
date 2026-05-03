@@ -1367,6 +1367,9 @@ export default function WatcherDashboard() {
 
         if (!previousInsideRef.current[riderId])
           previousInsideRef.current[riderId] = {};
+
+        const riderZoneState = previousInsideRef.current[riderId];
+
         activeGeofences.forEach((zone) => {
           const zoneLng = zone.lng;
           const inside = isInsideGeofence(
@@ -1376,14 +1379,22 @@ export default function WatcherDashboard() {
             zoneLng,
             zone.radiusKm,
           );
-          const wasInside =
-            previousInsideRef.current[riderId][zone.id] || false;
+
+          // Zone not yet tracked for this rider — initialize silently
+          // without firing an alert. This prevents spurious "entered"
+          // alerts on first load or when geofences change.
+          if (!(zone.id in riderZoneState)) {
+            riderZoneState[zone.id] = inside;
+            return;
+          }
+
+          const wasInside = riderZoneState[zone.id];
           if (inside && !wasInside) {
             addAlert(`✓ ${riderName} entered ${zone.name}`, "success");
-            previousInsideRef.current[riderId][zone.id] = true;
+            riderZoneState[zone.id] = true;
           } else if (!inside && wasInside) {
             addAlert(`✗ ${riderName} left ${zone.name}`, "warning");
-            previousInsideRef.current[riderId][zone.id] = false;
+            riderZoneState[zone.id] = false;
           }
         });
       });
