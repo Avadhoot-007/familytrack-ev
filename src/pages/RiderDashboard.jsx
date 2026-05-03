@@ -33,13 +33,13 @@ const BATTERY_SPECS = {
 };
 
 // Battery level thresholds for alerts and warnings
-const BATTERY_BLOCK = 0;        // Stop trip
-const BATTERY_CRITICAL = 10;    // Emergency alert
-const BATTERY_LOW = 25;         // Warning alert
+const BATTERY_BLOCK = 0; // Stop trip
+const BATTERY_CRITICAL = 10; // Emergency alert
+const BATTERY_LOW = 25; // Warning alert
 
 // Battery drain monitoring for alert display
-const DRAIN_BASELINE_WH_KM = 37;        // Expected consumption per km
-const DRAIN_ALERT_RATIO = 1.2;          // Ratio threshold to warn of excess drain
+const DRAIN_BASELINE_WH_KM = 37; // Expected consumption per km
+const DRAIN_ALERT_RATIO = 1.2; // Ratio threshold to warn of excess drain
 export default function RiderDashboard({ riderName, isActive = true }) {
   const [isSharing, setIsSharing] = useState(false);
   const [battery, setBattery] = useState(85);
@@ -594,7 +594,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
         durationSeconds: tripDataObj.durationSeconds,
         score: tripDataObj.score,
         avgSpeedKmh: tripDataObj.avgSpeedKmh,
-        battery,
+        battery: newBattery,
         batteryUsedPercent: tripDataObj.batteryUsedPercent,
         batteryRemaining: tripDataObj.batteryRemaining,
         worstAxis: tripDataObj.worstAxis,
