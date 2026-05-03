@@ -30,3 +30,4 @@ dist-ssr
 !.env.example
 .env.local
 .env.*.local
+.firebase/hosting.ZGlzdA.cache
