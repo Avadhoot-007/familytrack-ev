@@ -1,3 +1,8 @@
+// WatcherDashboard.jsx
+// Main monitoring interface for family watchers.
+// Displays: live rider map, geofences, alerts, trip history, eco trends,
+// charging stations, SOS handling, weather alerts, and route replay animation.
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ref, onValue, update, push } from "firebase/database";
 import { db } from "../config/firebase";
@@ -22,6 +27,7 @@ import { downloadTripPDF } from "../utils/tripPDFExport";
 import GeofenceEditor from "./GeofenceEditor.jsx";
 import { useStore } from "../store";
 
+// ── Rider & geofence color palettes ──────────────────────────────────────────
 const RIDER_COLORS = ["#e53935", "#1e88e5", "#8e24aa", "#f4511e", "#00897b"];
 const GEOFENCE_COLORS = [
   "#3b82f6",
@@ -35,9 +41,11 @@ const GEOFENCE_COLORS = [
 const getRiderColor = (index) => RIDER_COLORS[index % RIDER_COLORS.length];
 const getZoneColor = (index) => GEOFENCE_COLORS[index % GEOFENCE_COLORS.length];
 
+// ── Guard: valid lat/lon pair ─────────────────────────────────────────────────
 const validCoords = (lat, lon) =>
   lat != null && lon != null && !isNaN(Number(lat)) && !isNaN(Number(lon));
 
+// ── Guard: valid route array (≥2 points, each a [lat,lon] pair) ──────────────
 const validRoute = (route) =>
   Array.isArray(route) &&
   route.length >= 2 &&
@@ -49,6 +57,7 @@ const validRoute = (route) =>
       !isNaN(Number(p[1])),
   );
 
+// ── Leaflet DivIcon: teardrop marker colored per rider ───────────────────────
 const createDivIcon = (color, label) =>
   L.divIcon({
     className: "",
@@ -64,6 +73,7 @@ const createDivIcon = (color, label) =>
     popupAnchor: [0, -30],
   });
 
+// ── Leaflet DivIcon: lightning bolt for charging stations ────────────────────
 const createChargingIcon = () =>
   L.divIcon({
     className: "",
@@ -79,18 +89,43 @@ const createChargingIcon = () =>
     popupAnchor: [0, -16],
   });
 
+// ── Leaflet DivIcon: animated pulsing dot for replay head ────────────────────
+const createReplayIcon = (color) =>
+  L.divIcon({
+    className: "",
+    html: `<div style="
+      width:16px;height:16px;border-radius:50%;
+      background:${color};border:3px solid white;
+      box-shadow:0 0 0 3px ${color}88;
+      animation:replayPulse 0.8s ease infinite alternate;">
+    </div>
+    <style>
+      @keyframes replayPulse {
+        from { box-shadow: 0 0 0 3px ${color}88; }
+        to   { box-shadow: 0 0 0 8px ${color}22; }
+      }
+    </style>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+
+// ── Battery / drain alert thresholds ─────────────────────────────────────────
 const BATTERY_CRITICAL = 10;
 const BATTERY_LOW = 25;
-const DRAIN_BASELINE = 37;
-const DRAIN_ALERT_RATIO = 1.2;
+const DRAIN_BASELINE = 37; // Wh/km expected for Ather Rizta Z normal mode
+const DRAIN_ALERT_RATIO = 1.2; // alert if drain > baseline × 1.2
 
+// ── OpenWeatherMap key (optional — weather features disabled if absent) ───────
 const OWM_KEY = import.meta.env.VITE_OPENWEATHER_API_KEY;
+
+// WMO rain condition codes for OWM weather id field
 const RAIN_CODES = new Set([
   200, 201, 202, 210, 211, 212, 221, 230, 231, 232, 300, 301, 302, 310, 311,
   312, 313, 314, 321, 500, 501, 502, 503, 504, 511, 520, 521, 522, 531,
 ]);
 const isRaining = (id) => RAIN_CODES.has(id);
 
+// ── Fetch current weather at a lat/lon via OWM ───────────────────────────────
 const fetchWeather = async (lat, lon) => {
   if (!OWM_KEY) return null;
   try {
@@ -112,6 +147,7 @@ const fetchWeather = async (lat, lon) => {
   }
 };
 
+// ── Map eco score to a traffic-light color ────────────────────────────────────
 const ecoScoreColor = (score) => {
   if (score >= 80) return "#4CAF50";
   if (score >= 60) return "#ffc107";
@@ -119,7 +155,7 @@ const ecoScoreColor = (score) => {
   return "#dc3545";
 };
 
-// ── Tab button style helper ───────────────────────────────────────────────────
+// ── Tab button inline style helper ───────────────────────────────────────────
 const TAB_STYLE = (active) => ({
   padding: "6px 16px",
   fontSize: "13px",
@@ -133,7 +169,11 @@ const TAB_STYLE = (active) => ({
   whiteSpace: "nowrap",
 });
 
-// ── Trip Score Chart ──────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// TripScoreChart
+// Renders a small SVG sparkline of eco scores for the last 10 trips of one rider.
+// Shows average score, trend direction, and date range on x-axis.
+// ─────────────────────────────────────────────────────────────────────────────
 function TripScoreChart({ trips, riderName, color }) {
   const last10 = trips
     .filter((t) => t.riderName === riderName || t.riderId === riderName)
@@ -158,8 +198,8 @@ function TripScoreChart({ trips, riderName, color }) {
     );
   }
 
-  const W = 280;
-  const H = 70;
+  const W = 280,
+    H = 70;
   const PAD = { top: 8, right: 10, bottom: 18, left: 28 };
   const chartW = W - PAD.left - PAD.right;
   const chartH = H - PAD.top - PAD.bottom;
@@ -244,6 +284,7 @@ function TripScoreChart({ trips, riderName, color }) {
         height={H}
         style={{ display: "block", overflow: "visible" }}
       >
+        {/* Grid lines at 0 / 50 / 100 */}
         {[0, 50, 100].map((val) => {
           const y = toY(val);
           if (y < PAD.top || y > PAD.top + chartH) return null;
@@ -271,8 +312,10 @@ function TripScoreChart({ trips, riderName, color }) {
           );
         })}
 
+        {/* Shaded area under the line */}
         <path d={areaPath} fill={color} fillOpacity="0.08" />
 
+        {/* Score line */}
         <polyline
           points={polyPoints}
           fill="none"
@@ -282,6 +325,7 @@ function TripScoreChart({ trips, riderName, color }) {
           strokeLinecap="round"
         />
 
+        {/* Data point dots — last point is larger */}
         {last10.map((t, i) => {
           const s = Number(t.score || t.ecoScore || 0);
           const cx = toX(i);
@@ -313,6 +357,7 @@ function TripScoreChart({ trips, riderName, color }) {
           );
         })}
 
+        {/* Date labels on x-axis */}
         {last10.length > 0 && (
           <>
             <text
@@ -350,6 +395,11 @@ function TripScoreChart({ trips, riderName, color }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TripScoreCharts
+// Renders a TripScoreChart for every unique rider found in allTrips.
+// Looks up each rider's color from the shared riderColorMap ref.
+// ─────────────────────────────────────────────────────────────────────────────
 function TripScoreCharts({ allTrips, riderColorMap }) {
   const riderNames = [
     ...new Set(allTrips.map((t) => t.riderName || t.riderId).filter(Boolean)),
@@ -381,6 +431,11 @@ function TripScoreCharts({ allTrips, riderColorMap }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// RainPrompt
+// Dismissible banner shown when OWM detects rain near an online rider.
+// Each prompt carries a unique id so individual banners can be closed.
+// ─────────────────────────────────────────────────────────────────────────────
 function RainPrompt({ prompts, onDismiss }) {
   if (!prompts.length) return null;
   return (
@@ -435,6 +490,11 @@ function RainPrompt({ prompts, onDismiss }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MapController
+// Leaflet hook component: fires onMapReady with the map instance once mounted,
+// and invalidates map size after 300ms to fix rendering in flex/grid containers.
+// ─────────────────────────────────────────────────────────────────────────────
 function MapController({ onMapReady }) {
   const map = useMap();
   useEffect(() => {
@@ -445,6 +505,12 @@ function MapController({ onMapReady }) {
   return null;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SOSAlertModal
+// Full-screen modal displayed when a rider first triggers SOS.
+// Shows coordinates, battery, time, and Google Maps link.
+// Offers resolve (clears Firebase flag) or dismiss (moves to pending banner).
+// ─────────────────────────────────────────────────────────────────────────────
 function SOSAlertModal({ sosRider, onResolve, onClose }) {
   if (!sosRider) return null;
   const raw = sosRider.sosLocation;
@@ -529,6 +595,11 @@ function SOSAlertModal({ sosRider, onResolve, onClose }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PendingSOSBanner
+// Compact alert card for SOS events that were dismissed from the modal
+// but haven't been resolved yet. Shown above the alerts scroll panel.
+// ─────────────────────────────────────────────────────────────────────────────
 function PendingSOSBanner({ sosRider, onResolve, resolving }) {
   const raw = sosRider.sosLocation;
   const loc = raw
@@ -633,12 +704,18 @@ function PendingSOSBanner({ sosRider, onResolve, resolving }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TripStatsSummary
+// Aggregated stat boxes for trips within filterDays window.
+// Shows total trips, avg/best/worst score, total distance, avg speed.
+// ─────────────────────────────────────────────────────────────────────────────
 function TripStatsSummary({ trips, filterDays }) {
   const now = Date.now();
   const windowMs = filterDays * 24 * 60 * 60 * 1000;
   const filtered = trips.filter(
     (t) => now - new Date(t.timestamp).getTime() <= windowMs,
   );
+
   if (!filtered.length)
     return (
       <p style={{ color: "#666", fontSize: "14px" }}>
@@ -703,7 +780,19 @@ function TripStatsSummary({ trips, filterDays }) {
   );
 }
 
-function TripHistoryTable({ trips, filterDays, onTripClick, onExportPDF }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// TripHistoryTable
+// Sortable trip table filtered by filterDays.
+// Each row has View (opens detail modal) and PDF (downloads trip report) actions.
+// Also exposes a Replay button when the trip has a stored route array.
+// ─────────────────────────────────────────────────────────────────────────────
+function TripHistoryTable({
+  trips,
+  filterDays,
+  onTripClick,
+  onExportPDF,
+  onReplay,
+}) {
   const now = Date.now();
   const windowMs = filterDays * 24 * 60 * 60 * 1000;
   const filtered = trips
@@ -716,6 +805,7 @@ function TripHistoryTable({ trips, filterDays, onTripClick, onExportPDF }) {
         No trips in this period.
       </p>
     );
+
   const scoreColor = (s) =>
     s >= 70 ? "#28a745" : s >= 40 ? "#ffc107" : "#dc3545";
 
@@ -798,6 +888,7 @@ function TripHistoryTable({ trips, filterDays, onTripClick, onExportPDF }) {
                 {trip.avgSpeedKmh ?? "—"}
               </td>
               <td style={{ padding: "8px", textAlign: "center" }}>
+                {/* View — opens TripSummaryCard + CoachingTipCard modal */}
                 <button
                   onClick={() => onTripClick(trip)}
                   style={{
@@ -813,6 +904,7 @@ function TripHistoryTable({ trips, filterDays, onTripClick, onExportPDF }) {
                 >
                   View
                 </button>
+                {/* PDF — generates and downloads a trip report */}
                 <button
                   onClick={() => onExportPDF(trip)}
                   style={{
@@ -822,11 +914,30 @@ function TripHistoryTable({ trips, filterDays, onTripClick, onExportPDF }) {
                     border: "none",
                     borderRadius: "4px",
                     cursor: "pointer",
+                    marginRight: "4px",
                     fontSize: "12px",
                   }}
                 >
                   PDF
                 </button>
+                {/* Replay — only shown if the trip has stored route points */}
+                {validRoute(trip.route) && (
+                  <button
+                    onClick={() => onReplay(trip)}
+                    title="Animate this trip route on the map"
+                    style={{
+                      padding: "4px 8px",
+                      background: "#8e24aa",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      fontSize: "12px",
+                    }}
+                  >
+                    ▶ Replay
+                  </button>
+                )}
               </td>
             </tr>
           ))}
@@ -836,6 +947,14 @@ function TripHistoryTable({ trips, filterDays, onTripClick, onExportPDF }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AlertItem
+// Single alert row with contextual action buttons:
+//   charging_reminder → send low_battery coaching tip
+//   critical_battery  → send critical_battery tip + maps link
+//   drain_warning     → send eco throttle tip
+//   rain_tip          → send rain safety tip
+// ─────────────────────────────────────────────────────────────────────────────
 function AlertItem({ alert, onSendReminder }) {
   const bgColor =
     alert.type === "danger"
@@ -998,6 +1117,7 @@ function AlertItem({ alert, onSendReminder }) {
   );
 }
 
+// ── Coaching tip payloads sent to riders via Firebase coachingTips node ───────
 const REMINDER_TIPS = {
   low_battery: {
     title: "Low Battery — Find a Charger",
@@ -1029,6 +1149,11 @@ const REMINDER_TIPS = {
   },
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// RouteLegend
+// Absolute-positioned overlay on the map showing colored line swatches
+// for each online rider that has a current live route.
+// ─────────────────────────────────────────────────────────────────────────────
 function RouteLegend({ riders, riderColorMap }) {
   const onlineWithRoutes = Object.entries(riders).filter(
     ([, r]) => r.status === "online" && validRoute(r.currentRoute),
@@ -1082,15 +1207,154 @@ function RouteLegend({ riders, riderColorMap }) {
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ReplayOverlay
+// Floating control panel shown while a route replay is active.
+// Displays rider name, progress (current point / total), speed slider,
+// and Stop button. Positioned bottom-left of map wrapper.
+// ─────────────────────────────────────────────────────────────────────────────
+function ReplayOverlay({ replay, onStop, onSpeedChange }) {
+  if (!replay.active) return null;
+  const pct = Math.round(
+    (replay.currentIndex / (replay.totalPoints - 1)) * 100,
+  );
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        bottom: "60px",
+        left: "10px",
+        zIndex: 1000,
+        background: "rgba(0,0,0,0.85)",
+        border: `1px solid ${replay.color}`,
+        borderRadius: "10px",
+        padding: "12px 14px",
+        minWidth: "200px",
+        color: "#fff",
+        fontSize: "13px",
+        boxShadow: `0 4px 20px ${replay.color}44`,
+      }}
+    >
+      {/* Replay header */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "8px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <div
+            style={{
+              width: "8px",
+              height: "8px",
+              borderRadius: "50%",
+              background: replay.color,
+              animation: "replayDot 0.8s ease infinite alternate",
+            }}
+          />
+          <span style={{ fontWeight: "700", color: replay.color }}>
+            ▶ Replaying
+          </span>
+        </div>
+        <button
+          onClick={onStop}
+          style={{
+            background: "rgba(255,255,255,0.1)",
+            border: "1px solid #555",
+            color: "#fff",
+            borderRadius: "4px",
+            padding: "2px 8px",
+            cursor: "pointer",
+            fontSize: "12px",
+          }}
+        >
+          ■ Stop
+        </button>
+      </div>
+
+      {/* Rider name */}
+      <p style={{ margin: "0 0 6px", color: "#ccc", fontSize: "12px" }}>
+        {replay.riderName}
+      </p>
+
+      {/* Progress bar */}
+      <div
+        style={{
+          background: "#333",
+          borderRadius: "3px",
+          height: "4px",
+          marginBottom: "6px",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            background: replay.color,
+            transition: "width 0.1s",
+            borderRadius: "3px",
+          }}
+        />
+      </div>
+
+      {/* Point counter */}
+      <p style={{ margin: "0 0 8px", fontSize: "11px", color: "#888" }}>
+        Point {replay.currentIndex + 1} / {replay.totalPoints} ({pct}%)
+      </p>
+
+      {/* Speed control */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          fontSize: "11px",
+          color: "#aaa",
+        }}
+      >
+        <span>Speed:</span>
+        <input
+          type="range"
+          min="1"
+          max="10"
+          step="1"
+          value={replay.speed}
+          onChange={(e) => onSpeedChange(Number(e.target.value))}
+          style={{ flex: 1, accentColor: replay.color, cursor: "pointer" }}
+        />
+        <span
+          style={{ minWidth: "16px", color: replay.color, fontWeight: "700" }}
+        >
+          {replay.speed}x
+        </span>
+      </div>
+
+      <style>{`
+        @keyframes replayDot {
+          from { opacity: 1; } to { opacity: 0.3; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WatcherDashboard — main component
+// ─────────────────────────────────────────────────────────────────────────────
 export default function WatcherDashboard() {
+  // ── Global store ───────────────────────────────────────────────────────────
   const familyId = useStore((s) => s.familyId);
 
+  // ── Core state ─────────────────────────────────────────────────────────────
   const [riders, setRiders] = useState({});
   const [alerts, setAlerts] = useState([]);
   const [allTrips, setAllTrips] = useState([]);
   const [filterDays, setFilterDays] = useState(7);
-  const [activeTab, setActiveTab] = useState("history"); // "history" | "stats" | "trends"
+  const [activeTab, setActiveTab] = useState("history");
   const [firstOnlineRider, setFirstOnlineRider] = useState(null);
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [sosRider, setSosRider] = useState(null);
@@ -1099,19 +1363,38 @@ export default function WatcherDashboard() {
   const [resolvingRiderIds, setResolvingRiderIds] = useState(new Set());
   const [riderWeather, setRiderWeather] = useState({});
   const [rainPrompts, setRainPrompts] = useState([]);
-  const rainPromptedRef = useRef({});
   const [chargingStations, setChargingStations] = useState([]);
-  const chargingFetchedRef = useRef(false);
   const [showRoutes, setShowRoutes] = useState(true);
-
   const [firebaseGeofences, setFirebaseGeofences] = useState([]);
   const [showGeofenceEditor, setShowGeofenceEditor] = useState(false);
 
-  const activeGeofences =
-    familyId && firebaseGeofences.length > 0
-      ? firebaseGeofences
-      : staticGeofences;
+  // ── Route replay state ─────────────────────────────────────────────────────
+  // replay.active        — whether animation is currently running
+  // replay.route         — full array of [lat,lon] points for the trip
+  // replay.currentIndex  — index of the "head" point currently shown
+  // replay.totalPoints   — length of route array
+  // replay.color         — rider color for polyline + overlay accent
+  // replay.riderName     — display name shown in overlay
+  // replay.speed         — playback multiplier (1–10), controls interval timing
+  // replay.visibleRoute  — slice of route[0..currentIndex] drawn as polyline
+  const [replay, setReplay] = useState({
+    active: false,
+    route: [],
+    currentIndex: 0,
+    totalPoints: 0,
+    color: "#8e24aa",
+    riderName: "",
+    speed: 3,
+    visibleRoute: [],
+  });
 
+  // Interval ref for replay ticker — stored in ref so cleanup doesn't need
+  // replay in its dependency array (avoids stale closure on speed change)
+  const replayIntervalRef = useRef(null);
+
+  // ── Misc refs ──────────────────────────────────────────────────────────────
+  const rainPromptedRef = useRef({});
+  const chargingFetchedRef = useRef(false);
   const batteryAlertedRef = useRef({});
   const drainAlertedRef = useRef({});
   const rangeAlertedRef = useRef({});
@@ -1121,10 +1404,18 @@ export default function WatcherDashboard() {
   const previousInsideRef = useRef({});
   const sosProcessedRef = useRef({});
 
+  // Use familyId-scoped or static geofences
+  const activeGeofences =
+    familyId && firebaseGeofences.length > 0
+      ? firebaseGeofences
+      : staticGeofences;
+
+  // Store map instance when MapController fires onMapReady
   const handleMapReady = useCallback((m) => {
     mapRef.current = m;
   }, []);
 
+  // ── Firebase: family geofences listener ───────────────────────────────────
   useEffect(() => {
     if (!familyId) {
       setFirebaseGeofences([]);
@@ -1149,6 +1440,7 @@ export default function WatcherDashboard() {
     return () => unsub();
   }, [familyId]);
 
+  // ── Fetch charging stations near a coordinate (cached via service) ─────────
   const fetchMapStations = useCallback(async (lat, lon) => {
     if (chargingFetchedRef.current) return;
     chargingFetchedRef.current = true;
@@ -1160,6 +1452,7 @@ export default function WatcherDashboard() {
     }
   }, []);
 
+  // ── Poll OWM weather for all online riders every 5 minutes ────────────────
   const pollWeather = useCallback(async (currentRiders) => {
     if (!OWM_KEY) return;
     const onlineEntries = Object.entries(currentRiders).filter(([, r]) => {
@@ -1175,8 +1468,10 @@ export default function WatcherDashboard() {
         const riderName = riderData.location.name || riderId;
         const weather = await fetchWeather(lat, lon);
         if (!weather) return;
+
         setRiderWeather((prev) => ({ ...prev, [riderId]: weather }));
 
+        // Trigger rain prompt once per rider per rain event
         if (isRaining(weather.id) && !rainPromptedRef.current[riderId]) {
           rainPromptedRef.current[riderId] = true;
           const promptId = `rain-${riderId}-${Date.now()}`;
@@ -1198,6 +1493,7 @@ export default function WatcherDashboard() {
     [],
   );
 
+  // ── Add alert to the scrollable panel (max 50 kept) ───────────────────────
   const addAlert = (message, type = "warning", extra = {}) => {
     setAlerts((prev) => [
       { id: `alert-${Date.now()}-${Math.random()}`, message, type, ...extra },
@@ -1205,6 +1501,7 @@ export default function WatcherDashboard() {
     ]);
   };
 
+  // ── Send a coaching tip to rider's Firebase inbox ─────────────────────────
   const handleSendReminder = async (riderId, riderName, tipType) => {
     const key = `${riderId}_${tipType}`;
     setReminderStatus((prev) => ({ ...prev, [key]: "sending" }));
@@ -1222,9 +1519,9 @@ export default function WatcherDashboard() {
       setTimeout(
         () =>
           setReminderStatus((prev) => {
-            const next = { ...prev };
-            delete next[key];
-            return next;
+            const n = { ...prev };
+            delete n[key];
+            return n;
           }),
         4000,
       );
@@ -1234,13 +1531,20 @@ export default function WatcherDashboard() {
     }
   };
 
-  // ── Riders Firebase listener ──────────────────────────────────────────────
+  // ── Firebase: main riders listener ────────────────────────────────────────
+  // Subscribes to riders/ and handles:
+  //   - Assigning stable color per rider
+  //   - SOS detection and modal trigger
+  //   - Battery / drain / range alerts
+  //   - Geofence entry/exit alerts
+  //   - Flattening all trips into allTrips state for history table
   useEffect(() => {
     const ridersRef = ref(db, "riders");
     const unsubscribe = onValue(ridersRef, (snapshot) => {
       const data = snapshot.val();
       if (!data) return;
 
+      // Assign index + color to new riders on first sight
       Object.keys(data).forEach((riderId) => {
         if (riderIndexMap.current[riderId] === undefined) {
           const idx = Object.keys(riderIndexMap.current).length;
@@ -1252,6 +1556,8 @@ export default function WatcherDashboard() {
       setRiders(data);
 
       Object.entries(data).forEach(([riderId, riderData]) => {
+        // ── SOS detection ──────────────────────────────────────────────────
+        // sosProcessedRef prevents re-showing the modal on every Firebase update
         if (
           riderData.sosTriggered === true &&
           !sosProcessedRef.current[riderId]
@@ -1279,6 +1585,7 @@ export default function WatcherDashboard() {
         const riderName = loc.name || riderId;
         if (!validCoords(loc.lat, lon)) return;
 
+        // ── Battery alerts ─────────────────────────────────────────────────
         const bat = Number(loc.battery ?? 100);
         if (!batteryAlertedRef.current[riderId])
           batteryAlertedRef.current[riderId] = {};
@@ -1311,6 +1618,7 @@ export default function WatcherDashboard() {
           );
         }
 
+        // Reset alert flags when battery recovers
         if (bat > BATTERY_LOW) {
           ba.low = false;
           ba.critical = false;
@@ -1320,6 +1628,7 @@ export default function WatcherDashboard() {
 
         if (isOnline && bat <= BATTERY_LOW) fetchMapStations(loc.lat, lon);
 
+        // ── Drain rate & range alerts (based on latest completed trip) ─────
         const trips = riderData.trips ? Object.values(riderData.trips) : [];
         if (trips.length > 0) {
           const latest = trips.sort(
@@ -1365,9 +1674,12 @@ export default function WatcherDashboard() {
           }
         }
 
+        // ── Geofence entry/exit detection ──────────────────────────────────
+        // previousInsideRef tracks last known inside/outside state per zone.
+        // On first observation a zone is initialized silently to avoid
+        // spurious "entered" alerts on dashboard load.
         if (!previousInsideRef.current[riderId])
           previousInsideRef.current[riderId] = {};
-
         const riderZoneState = previousInsideRef.current[riderId];
 
         activeGeofences.forEach((zone) => {
@@ -1380,11 +1692,8 @@ export default function WatcherDashboard() {
             zone.radiusKm,
           );
 
-          // Zone not yet tracked for this rider — initialize silently
-          // without firing an alert. This prevents spurious "entered"
-          // alerts on first load or when geofences change.
           if (!(zone.id in riderZoneState)) {
-            riderZoneState[zone.id] = inside;
+            riderZoneState[zone.id] = inside; // silent init
             return;
           }
 
@@ -1392,13 +1701,15 @@ export default function WatcherDashboard() {
           if (inside && !wasInside) {
             addAlert(`✓ ${riderName} entered ${zone.name}`, "success");
             riderZoneState[zone.id] = true;
-          } else if (!inside && wasInside) {
+          }
+          if (!inside && wasInside) {
             addAlert(`✗ ${riderName} left ${zone.name}`, "warning");
             riderZoneState[zone.id] = false;
           }
         });
       });
 
+      // ── Flatten all riders' trips into a single array for the history table
       const trips = Object.entries(data).flatMap(([riderId, riderData]) => {
         if (!riderData.trips) return [];
         const riderName = riderData.location?.name || riderId;
@@ -1412,6 +1723,7 @@ export default function WatcherDashboard() {
       });
       setAllTrips(trips);
 
+      // Track first online rider for default map center
       const onlineEntry = Object.entries(data).find(([, r]) => {
         if (r.status !== "online" || !r.location) return false;
         return validCoords(r.location.lat, r.location.lon ?? r.location.lng);
@@ -1427,6 +1739,7 @@ export default function WatcherDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchMapStations]);
 
+  // ── Weather polling: separate listener + 5-min interval ───────────────────
   useEffect(() => {
     if (!OWM_KEY) return;
     const ridersRef2 = ref(db, "riders");
@@ -1443,21 +1756,135 @@ export default function WatcherDashboard() {
     };
   }, [pollWeather]);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Route Replay Engine
+  // Triggered by the Replay button in TripHistoryTable.
+  // Uses setInterval to advance currentIndex by `speed` steps per tick (100ms).
+  // Each tick updates replay.visibleRoute to route[0..currentIndex] so the
+  // Polyline on the map grows progressively — the head marker jumps to the
+  // latest point. When currentIndex reaches the end the replay auto-stops.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Start replay for a given trip object
+  const handleStartReplay = useCallback((trip) => {
+    if (!validRoute(trip.route)) return;
+
+    // Stop any currently running replay first
+    if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
+
+    const color = trip.riderColor || "#8e24aa";
+    const totalPoints = trip.route.length;
+
+    // Pan map to start of route
+    if (mapRef.current && trip.route[0]) {
+      mapRef.current.setView(trip.route[0], 14);
+    }
+
+    // Initialise replay state at point 0
+    setReplay({
+      active: true,
+      route: trip.route,
+      currentIndex: 0,
+      totalPoints,
+      color,
+      riderName: trip.riderName || trip.riderId || "Rider",
+      speed: 3,
+      visibleRoute: [trip.route[0]],
+    });
+  }, []);
+
+  // Advance replay one step — called inside setInterval
+  // Uses functional setState to read current index without stale closure
+  const stepReplay = useCallback(() => {
+    setReplay((prev) => {
+      if (!prev.active) return prev;
+
+      // Advance by `speed` points per tick for faster replay at higher speeds
+      const nextIndex = Math.min(
+        prev.currentIndex + prev.speed,
+        prev.totalPoints - 1,
+      );
+      const visibleRoute = prev.route.slice(0, nextIndex + 1);
+
+      if (nextIndex >= prev.totalPoints - 1) {
+        // Replay finished — clear interval and mark inactive
+        if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
+        replayIntervalRef.current = null;
+        return {
+          ...prev,
+          currentIndex: nextIndex,
+          visibleRoute,
+          active: false,
+        };
+      }
+
+      return { ...prev, currentIndex: nextIndex, visibleRoute };
+    });
+  }, []);
+
+  // When replay becomes active, start the ticker interval
+  useEffect(() => {
+    if (replay.active) {
+      replayIntervalRef.current = setInterval(stepReplay, 100);
+    } else {
+      if (replayIntervalRef.current) {
+        clearInterval(replayIntervalRef.current);
+        replayIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
+    };
+  }, [replay.active, stepReplay]);
+
+  // Speed change: restart interval with updated speed
+  // (stepReplay reads speed from state via functional update so no restart needed,
+  //  but we re-sync interval timing all the same)
+  const handleReplaySpeedChange = useCallback((newSpeed) => {
+    setReplay((prev) => ({ ...prev, speed: newSpeed }));
+  }, []);
+
+  // Stop replay and clear the drawn route from the map
+  const handleStopReplay = useCallback(() => {
+    if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
+    replayIntervalRef.current = null;
+    setReplay((prev) => ({
+      ...prev,
+      active: false,
+      visibleRoute: [],
+      currentIndex: 0,
+    }));
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(
+    () => () => {
+      if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
+    },
+    [],
+  );
+
+  // ── Derived map data ───────────────────────────────────────────────────────
   const defaultCenter = [18.5204, 73.8567];
   const mapCenter =
     firstOnlineRider && validCoords(firstOnlineRider.lat, firstOnlineRider.lon)
       ? [firstOnlineRider.lat, firstOnlineRider.lon]
       : defaultCenter;
 
-  const onlineRiders = Object.entries(riders).filter(([, r]) => {
-    if (r.status !== "online" || !r.location) return false;
-    return validCoords(r.location.lat, r.location.lon ?? r.location.lng);
-  });
-  const offlineRiders = Object.entries(riders).filter(([, r]) => {
-    if (r.status === "online" || !r.location) return false;
-    return validCoords(r.location.lat, r.location.lon ?? r.location.lng);
-  });
+  const onlineRiders = Object.entries(riders).filter(
+    ([, r]) =>
+      r.status === "online" &&
+      r.location &&
+      validCoords(r.location.lat, r.location.lon ?? r.location.lng),
+  );
+  const offlineRiders = Object.entries(riders).filter(
+    ([, r]) =>
+      r.status !== "online" &&
+      r.location &&
+      validCoords(r.location.lat, r.location.lon ?? r.location.lng),
+  );
 
+  // ── PDF export handler ─────────────────────────────────────────────────────
   const handleExportPDF = (trip) => {
     try {
       downloadTripPDF({
@@ -1477,6 +1904,7 @@ export default function WatcherDashboard() {
     }
   };
 
+  // ── SOS resolve: clears sosTriggered flag on Firebase ─────────────────────
   const handleSOSResolve = async (riderIdOverride) => {
     const targetId = riderIdOverride ?? sosRider?.riderId;
     if (!targetId) return;
@@ -1485,9 +1913,9 @@ export default function WatcherDashboard() {
       await update(ref(db, `riders/${targetId}`), { sosTriggered: false });
       sosProcessedRef.current[targetId] = false;
       setPendingSosRiders((prev) => {
-        const next = { ...prev };
-        delete next[targetId];
-        return next;
+        const n = { ...prev };
+        delete n[targetId];
+        return n;
       });
       if (sosRider?.riderId === targetId) setSosRider(null);
     } catch (error) {
@@ -1495,13 +1923,14 @@ export default function WatcherDashboard() {
       alert("Failed to mark SOS as resolved");
     } finally {
       setResolvingRiderIds((prev) => {
-        const next = new Set(prev);
-        next.delete(targetId);
-        return next;
+        const n = new Set(prev);
+        n.delete(targetId);
+        return n;
       });
     }
   };
 
+  // Move SOS from modal to persistent pending banner without resolving
   const handleSOSModalClose = (dismissedSosRider) => {
     if (dismissedSosRider?.riderId) {
       setPendingSosRiders((prev) => ({
@@ -1512,6 +1941,7 @@ export default function WatcherDashboard() {
     setSosRider(null);
   };
 
+  // ── Map pan helpers ────────────────────────────────────────────────────────
   const handleRecenterMap = () => {
     if (!mapRef.current) return;
     if (
@@ -1549,8 +1979,10 @@ export default function WatcherDashboard() {
 
   const pendingSosEntries = Object.entries(pendingSosRiders);
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="watcher-dashboard">
+      {/* ── Header row: title + Geofence toggle button ─────────────────────── */}
       <div
         style={{
           display: "flex",
@@ -1595,8 +2027,10 @@ export default function WatcherDashboard() {
         </button>
       </div>
 
+      {/* Rain dismissible banners */}
       <RainPrompt prompts={rainPrompts} onDismiss={dismissRainPrompt} />
 
+      {/* Warning if OWM key is missing */}
       {!OWM_KEY && (
         <div
           style={{
@@ -1615,6 +2049,7 @@ export default function WatcherDashboard() {
         </div>
       )}
 
+      {/* Collapsible geofence editor */}
       {showGeofenceEditor && (
         <div style={{ marginBottom: "24px" }}>
           <GeofenceEditor familyId={familyId} />
@@ -1647,7 +2082,7 @@ export default function WatcherDashboard() {
         </div>
       )}
 
-      {/* Rider status pills */}
+      {/* ── Rider status pills ──────────────────────────────────────────────── */}
       <div className="watcher-pills-container">
         {Object.entries(riders).map(([riderId, riderData]) => {
           const isOnline = riderData.status === "online";
@@ -1701,9 +2136,11 @@ export default function WatcherDashboard() {
         })}
       </div>
 
-      {/* Map + Alerts grid */}
+      {/* ── Map + Alerts two-column grid ───────────────────────────────────── */}
       <div className="watcher-map-alerts-grid">
+        {/* Map wrapper — position:relative so absolute overlays work */}
         <div className="map-wrapper">
+          {/* Map control buttons — bottom-right */}
           <div
             style={{
               position: "absolute",
@@ -1731,6 +2168,7 @@ export default function WatcherDashboard() {
             </button>
           </div>
 
+          {/* Routes toggle — top-right */}
           <button
             onClick={() => setShowRoutes((v) => !v)}
             style={{
@@ -1753,6 +2191,7 @@ export default function WatcherDashboard() {
             {showRoutes ? "🛣️ Routes ON" : "🛣️ Routes OFF"}
           </button>
 
+          {/* Charging station count badge — top-left */}
           {chargingStations.length > 0 && (
             <div
               style={{
@@ -1771,6 +2210,14 @@ export default function WatcherDashboard() {
             </div>
           )}
 
+          {/* ── Route Replay overlay control panel ──────────────────────── */}
+          <ReplayOverlay
+            replay={replay}
+            onStop={handleStopReplay}
+            onSpeedChange={handleReplaySpeedChange}
+          />
+
+          {/* ── Leaflet map ────────────────────────────────────────────── */}
           <MapContainer center={mapCenter} zoom={13} className="map-container">
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -1780,6 +2227,7 @@ export default function WatcherDashboard() {
             />
             <MapController onMapReady={handleMapReady} />
 
+            {/* Live routes for online riders */}
             {showRoutes &&
               onlineRiders.map(([riderId, riderData]) => {
                 const route = riderData.currentRoute;
@@ -1800,6 +2248,7 @@ export default function WatcherDashboard() {
                 );
               })}
 
+            {/* Last-trip ghost routes for offline riders */}
             {showRoutes &&
               Object.entries(riders).map(([riderId, riderData]) => {
                 if (riderData.status === "online") return null;
@@ -1827,6 +2276,31 @@ export default function WatcherDashboard() {
                 );
               })}
 
+            {/* ── Route replay animated polyline + head marker ─────────── */}
+            {replay.active && validRoute(replay.visibleRoute) && (
+              <>
+                {/* Drawn portion of the route so far */}
+                <Polyline
+                  key="replay-line"
+                  positions={replay.visibleRoute}
+                  pathOptions={{
+                    color: replay.color,
+                    weight: 5,
+                    opacity: 0.95,
+                    lineJoin: "round",
+                    lineCap: "round",
+                  }}
+                />
+                {/* Pulsing head marker at the current replay position */}
+                <Marker
+                  key="replay-head"
+                  position={replay.visibleRoute[replay.visibleRoute.length - 1]}
+                  icon={createReplayIcon(replay.color)}
+                />
+              </>
+            )}
+
+            {/* Online rider markers */}
             {onlineRiders.map(([riderId, riderData]) => {
               const hasSOS = riderData.sosTriggered && !riderData.sosResolved;
               const bat = Number(riderData.location.battery ?? 100);
@@ -1901,6 +2375,7 @@ export default function WatcherDashboard() {
               );
             })}
 
+            {/* Offline rider markers (dimmed) */}
             {offlineRiders.map(([riderId, riderData]) => {
               const name = riderData.location?.name || riderId;
               const lon = riderData.location.lon ?? riderData.location.lng;
@@ -1920,6 +2395,7 @@ export default function WatcherDashboard() {
               );
             })}
 
+            {/* Geofence circles */}
             {activeGeofences.map((zone, i) => {
               const zoneLng = zone.lng;
               if (!validCoords(zone.lat, zoneLng)) return null;
@@ -1950,6 +2426,7 @@ export default function WatcherDashboard() {
               );
             })}
 
+            {/* Charging station markers */}
             {chargingStations.map((s) => (
               <Marker
                 key={s.id}
@@ -1986,15 +2463,17 @@ export default function WatcherDashboard() {
             ))}
           </MapContainer>
 
+          {/* Live route legend overlay (top-left of map) */}
           {showRoutes && (
             <RouteLegend riders={riders} riderColorMap={riderColorMap} />
           )}
         </div>
 
-        {/* Alerts panel */}
+        {/* ── Alerts panel ─────────────────────────────────────────────────── */}
         <div>
           <h3 style={{ margin: "0 0 12px", color: "#fff" }}>Recent Alerts</h3>
 
+          {/* Unresolved SOS banners above alerts */}
           {pendingSosEntries.length > 0 && (
             <div style={{ marginBottom: "12px" }}>
               <p
@@ -2020,6 +2499,7 @@ export default function WatcherDashboard() {
             </div>
           )}
 
+          {/* Reminder send status feedback strip */}
           <div className="watcher-reminder-strip">
             {Object.entries(reminderStatus).map(([key, status]) => (
               <div
@@ -2050,6 +2530,7 @@ export default function WatcherDashboard() {
             ))}
           </div>
 
+          {/* Scrollable alerts list */}
           <div className="watcher-alerts-scroll">
             {!alerts.length && (
               <p style={{ color: "#666", fontSize: "14px" }}>No alerts yet.</p>
@@ -2065,9 +2546,9 @@ export default function WatcherDashboard() {
         </div>
       </div>
 
-      {/* ── Trip History — tabbed ─────────────────────────────────────────── */}
+      {/* ── Trip History — tabbed section ──────────────────────────────────── */}
       <div>
-        {/* Header: title + tabs + filter */}
+        {/* Tab header */}
         <div
           style={{
             display: "flex",
@@ -2102,7 +2583,7 @@ export default function WatcherDashboard() {
             </button>
           </div>
 
-          {/* Filter hidden on Trends tab — no filterDays concept there */}
+          {/* Date filter — hidden on trends tab */}
           {activeTab !== "trends" && (
             <select
               id="filter-days"
@@ -2133,19 +2614,18 @@ export default function WatcherDashboard() {
             filterDays={filterDays}
             onTripClick={setSelectedTrip}
             onExportPDF={handleExportPDF}
+            onReplay={handleStartReplay} // passes replay handler to table
           />
         )}
-
         {activeTab === "stats" && (
           <TripStatsSummary trips={allTrips} filterDays={filterDays} />
         )}
-
         {activeTab === "trends" && (
           <TripScoreCharts allTrips={allTrips} riderColorMap={riderColorMap} />
         )}
       </div>
 
-      {/* Trip detail modal */}
+      {/* ── Trip detail modal ──────────────────────────────────────────────── */}
       {selectedTrip &&
         (() => {
           const tripForCard = {
@@ -2208,6 +2688,7 @@ export default function WatcherDashboard() {
           );
         })()}
 
+      {/* ── SOS full-screen modal ──────────────────────────────────────────── */}
       {sosRider && (
         <SOSAlertModal
           sosRider={sosRider}
