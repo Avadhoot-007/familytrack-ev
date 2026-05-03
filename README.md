@@ -27,7 +27,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 **FamilyTrack EV** is an all-in-one family safety and eco-awareness platform designed specifically for electric vehicle riders. It combines real-time GPS tracking, battery monitoring, eco-score analytics, and family-based safety features into a unified application. Perfect for families wanting to ensure rider safety while promoting environmentally conscious driving habits.
 
 **Use Cases:**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - Parents monitoring teenage EV riders
 - Family coordination and safety alerts
 - Eco-driving coaching and performance tracking
@@ -41,7 +44,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 ### For Riders 👤
 
 #### **Real-Time Location Sharing**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - Live GPS synchronization to Firebase Realtime Database
 - Continuous online/offline status tracking
 - Accurate location updates every 5-10 seconds during active trips
@@ -49,7 +55,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - Location history persistence in local storage
 
 #### **Eco-Score Tracking System**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Real-time dynamic scoring** based on three weighted metrics:
   - Throttle control (35%): Smooth acceleration rewards
   - Speed management (35%): Optimal speed range (40-50 km/h preferred)
@@ -64,7 +73,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Leaderboard ranking** by average eco-score, distance, and trips completed
 
 #### **Advanced Battery Management**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Real-time battery percentage display** with remaining capacity
 - **Three consumption profiles** optimized for different riding styles:
   - **Eco Mode**: 33 Wh/km (max range, gentle riding)
@@ -80,7 +92,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Pre-trip battery check**: Prevents trips if battery is critically low
 
 #### **Comprehensive Trip Recording**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Automatic trip tracking** when motion is detected
 - **Captured metrics per trip**:
   - Distance traveled (km)
@@ -96,7 +111,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Detailed trip summary cards** with analytics
 
 #### **Emergency SOS Feature**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Hold-to-activate system**: 5-second hold button press triggers SOS
 - **Automatic emergency data transmission**:
   - Current GPS location (lat/lon/accuracy)
@@ -111,7 +129,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Immediate watcher alert** on SOS trigger
 
 #### **Environmental Badges & Achievements**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **5-tier badge system** based on CO2 saved:
   - 🌱 **Seedling**: 5 kg CO2 saved
   - 🌿 **Sapling**: 25 kg CO2 saved
@@ -124,7 +145,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Achievement notifications** on badge tier unlocks
 
 #### **Intelligent Coaching System**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Auto-generated contextual coaching tips** based on:
   - Real-time eco-score during riding
   - Battery level and drain rate
@@ -144,7 +168,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Watcher-sent tips**: Custom tips from family members with priority levels
 
 #### **Charging Station Locator**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Overpass API integration**: Real-time charging station database
 - **Smart radius expansion algorithm**:
   - Starts at 3km radius
@@ -162,7 +189,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Sorted by proximity**: Nearest stations listed first
 
 #### **Trip PDF Export**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Custom PDF generation** (no external libraries, pure JavaScript)
 - **Exported trip summary includes**:
   - Rider name, date, and time
@@ -175,7 +205,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Download functionality**: Save PDFs to device for record-keeping
 
 #### **Interactive Map & Route Visualization**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Leaflet + OpenStreetMap integration**: Real-time map display
 - **Route mapping**: Complete GPS path visualization during and after trips
 - **Live marker updates**: Current position indicator
@@ -188,7 +221,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 ### For Watchers 👁️
 
 #### **Live Interactive Multi-Rider Map**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Real-time rider tracking**: All family members visible on single map
 - **Leaflet + OpenStreetMap base**: Professional mapping backend
 - **Multi-rider markers** with:
@@ -202,7 +238,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Route legend**: Shows number of tracked points per active rider
 
 #### **Advanced Geofence Management**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Create custom safe zones** directly on the interactive map
 - **Zone properties**:
   - Custom name and color (7 color options)
@@ -216,7 +255,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Visual zone feedback**: Color-coded circles on map
 
 #### **Comprehensive Alerts Dashboard**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Multi-category alert system**:
   - 🔋 Battery alerts (low battery warnings)
   - 📊 Drain rate alerts (abnormal power consumption)
@@ -229,7 +271,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Alert prioritization**: Critical/high alerts shown first
 
 #### **Emergency SOS Response System**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Immediate SOS modal popup** when rider triggers emergency
 - **Rapid access to critical information**:
   - 🚨 Rider name and status
@@ -241,7 +286,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Multi-rider SOS handling**: Multiple riders can call SOS simultaneously
 
 #### **Trip Monitoring & Analysis**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Browse all family trips** from dashboard
 - **Advanced trip filtering**:
   - By date range (today, last 7 days, custom)
@@ -261,7 +309,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Route review**: Inspect GPS paths for each trip
 
 #### **Intelligent Coaching System**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Auto-generate coaching tips** based on rider's eco-score:
   - Threshold-based suggestion (if eco-score <40, <60, etc.)
   - Personalized to riding style and patterns
@@ -278,7 +329,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Multi-watcher support**: Multiple family members can send tips
 
 #### **Environmental Reports & Analytics**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Family-level environmental dashboard**:
   - Total CO2 saved by family
   - Tree equivalents planted (theoretical)
@@ -296,7 +350,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Eco-impact visualization**: Charts and graphs
 
 #### **Weather-Based Safety Alerts**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **OpenWeatherMap integration**: Real-time weather data
 - **Rain detection** using WMO weather codes
 - **Weather condition tracking**:
@@ -312,7 +369,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Manual weather-based tips**: Watcher can send weather-specific safety tips
 
 #### **Family Member Management**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Family panel with member list**:
   - Display name and role (Rider/Watcher)
   - Member profiles and contact info
@@ -328,42 +388,60 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 ### Unique Features ⭐
 
 #### **Advanced Eco-Score Algorithm**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Three-component weighting system**: Throttle, Speed, Acceleration
 - **Real-time calculation**: Updated 10+ times per second during riding
 - **Historical tracking**: All eco-scores stored per trip for analysis
 - **Comparative leaderboard**: Family members compete eco-score rankings
 
 #### **No External PDF Library**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Custom PDF generation** built from scratch
 - **All trip data embedded** in generated PDFs
 - **Environmental report included** in exports
 - **Lightweight implementation** reduces bundle size
 
 #### **Dual Role Architecture**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Rider mode**: Real-time sharing, trip recording, eco-scoring
 - **Watcher mode**: Multi-rider tracking, geofence management, coaching
 - **Role switching**: Users can toggle between roles within app
 - **Mixed family setup**: Both roles supported in same family group
 
 #### **Progressive Geofence Search**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Smart API querying**: Expands search radius progressively
 - **Result caching**: 5-minute TTL on charging station queries
 - **Bandwidth optimized**: Reduces redundant API calls
 - **Seamless UX**: Automatic fallback without user intervention
 
 #### **Comprehensive Zustand State Management**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Persistent localStorage**: Trip history survives app refresh
 - **Firebase sync**: Cloud persistence for multi-device access
 - **Conflict resolution**: Merges local & cloud trips intelligently
 - **100-trip limit**: Prevents excessive storage while maintaining history
 
 #### **Real-Time Firebase Integration**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Live location updates**: GPS synced to database instantly
 - **SOS event streaming**: Emergency alerts in real-time
 - **Multi-device sync**: Changes propagate across all family devices
@@ -371,7 +449,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Geofence change detection**: Instant updates for zone modifications
 
 #### **Customizable Admin Panel**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Runtime configuration editor**:
   - Adjust battery thresholds
   - Modify eco-score weights
@@ -382,7 +463,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Reset & revert options**: Undo unwanted changes
 
 #### **Battery Profile System**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Pre-configured for Ather Rizta Z**: 3.7 kWh capacity
 - **Three consumption modes**: Eco (33), Normal (37), Aggressive (46) Wh/km
 - **Dynamic profile switching**: Automatic based on riding style
@@ -390,7 +474,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Drain rate anomaly detection**: 20% above baseline triggers alert
 
 #### **Demo & Testing Features**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **7 demo rider profiles** with sample trips
 - **100-trip history support** for testing large datasets
 - **Simulated GPS tracking** for testing without vehicle
@@ -398,7 +485,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Local Zustand fallback**: Work offline with local data
 
 #### **Comprehensive Geofence Visualization**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - **Color-coded zones** (7 color palette)
 - **Radius overlay** on interactive map
 - **Entry/exit indicators** on route visualization
@@ -409,6 +499,7 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 
 ## 🛠️ Tech Stack
 
+<<<<<<< HEAD
 | Category                  | Technology                                    |
 | ------------------------- | --------------------------------------------- |
 | **Frontend Framework**    | React 19                                      |
@@ -428,6 +519,26 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 
 **Version Requirements:**
 
+=======
+| Category | Technology |
+|----------|------------|
+| **Frontend Framework** | React 19 |
+| **Build Tool** | Vite 8 |
+| **State Management** | Zustand 5 |
+| **Maps & Geolocation** | Leaflet 1.9 + React-Leaflet 5 + OpenStreetMap |
+| **Backend & Database** | Firebase Realtime Database |
+| **Authentication** | Firebase Auth + Google Sign-In |
+| **Maps API** | Google Maps Directions API |
+| **POI Database** | Overpass API (OpenStreetMap) |
+| **Weather Data** | OpenWeatherMap API |
+| **Styling** | Pure CSS with responsive design |
+| **Storage** | LocalStorage (Zustand persistence) + Firebase |
+| **PDF Generation** | Custom JavaScript implementation |
+| **Geolocation** | Browser Geolocation API |
+| **Distance Calculations** | Haversine formula |
+
+**Version Requirements:**
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - Node.js 18+
 - npm or yarn
 
@@ -436,7 +547,10 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 ## 🚀 Installation & Setup
 
 ### Prerequisites
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - Node.js 18+ installed
 - npm or yarn package manager
 - Firebase project with Realtime Database enabled
@@ -444,18 +558,28 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
   - Firebase (Auth + Realtime DB)
   - OpenWeatherMap (optional for weather features)
   - Google Maps (for directions links)
+<<<<<<< HEAD
 
 ### Step-by-Step Installation
 
 #### 1. **Clone Repository**
 
+=======
+
+### Step-by-Step Installation
+
+#### 1. **Clone Repository**
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 ```bash
 git clone https://github.com/Avadhoot-007/familytrack-ev.git
 cd familytrack-ev
 ```
 
 #### 2. **Install Dependencies**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 ```bash
 npm install
 ```
@@ -518,7 +642,10 @@ Set up Firebase Realtime Database security rules:
 ```
 
 #### 5. **Run Development Server**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 ```bash
 npm run dev
 ```
@@ -526,7 +653,10 @@ npm run dev
 The app will start on `http://localhost:5173` (or another available port).
 
 #### 6. **Build for Production**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 ```bash
 npm run build
 ```
@@ -534,7 +664,10 @@ npm run build
 Generated files will be in the `dist/` directory.
 
 #### 7. **Deploy (Firebase Hosting)**
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 ```bash
 firebase init hosting
 firebase deploy
@@ -601,6 +734,7 @@ Edit `src/pages/RiderDashboard.jsx`:
 ```javascript
 // Ather Rizta Z Specifications
 const BATTERY_SPECS = {
+<<<<<<< HEAD
   capacity: 3700, // 3.7 kWh total capacity
   consumption: {
     eco: 33, // Wh/km in eco mode
@@ -617,6 +751,24 @@ const BATTERY_BLOCK = 0; // % - minimum to ride
 // Drain Rate Detection
 const DRAIN_BASELINE_WH_KM = 37; // Expected consumption (normal mode)
 const DRAIN_ALERT_RATIO = 1.2; // 20% above baseline triggers alert
+=======
+  capacity: 3700,     // 3.7 kWh total capacity
+  consumption: {
+    eco: 33,         // Wh/km in eco mode
+    normal: 37,      // Wh/km in normal mode
+    aggressive: 46   // Wh/km in aggressive mode
+  }
+};
+
+// Battery Alert Thresholds
+const BATTERY_CRITICAL = 10;  // % - blocks trip start
+const BATTERY_LOW = 25;       // % - shows warning
+const BATTERY_BLOCK = 0;      // % - minimum to ride
+
+// Drain Rate Detection
+const DRAIN_BASELINE_WH_KM = 37;  // Expected consumption (normal mode)
+const DRAIN_ALERT_RATIO = 1.2;    // 20% above baseline triggers alert
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 ```
 
 ### Eco-Score Algorithm
@@ -626,9 +778,15 @@ Edit `src/utils/ecoScoring.js`:
 ```javascript
 // Eco-Score Weights (must sum to 100)
 const WEIGHTS = {
+<<<<<<< HEAD
   throttle: 35, // Smooth acceleration importance
   speed: 35, // Speed maintenance importance
   acceleration: 30, // Acceleration smoothness importance
+=======
+  throttle: 35,      // Smooth acceleration importance
+  speed: 35,         // Speed maintenance importance
+  acceleration: 30   // Acceleration smoothness importance
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 };
 
 // Score Ranges
@@ -646,6 +804,7 @@ Edit `src/utils/ecoImpactCalculations.js`:
 ```javascript
 // CO2 Thresholds (kg CO2 saved)
 const BADGE_TIERS = {
+<<<<<<< HEAD
   seedling: 5, // 🌱 Seedling
   sapling: 25, // 🌿 Sapling
   oak: 100, // 🌳 Oak
@@ -655,6 +814,17 @@ const BADGE_TIERS = {
 
 // CO2 Calculation
 const CO2_PER_KM = 0.142; // kg CO2/km (EV vs. petrol)
+=======
+  seedling: 5,              // 🌱 Seedling
+  sapling: 25,              // 🌿 Sapling
+  oak: 100,                 // 🌳 Oak
+  forestGuardian: 500,      // 🌲 Forest Guardian
+  carbonChampion: 1000      // 🏆 Carbon Champion
+};
+
+// CO2 Calculation
+const CO2_PER_KM = 0.142;   // kg CO2/km (EV vs. petrol)
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 const CO2_PER_TREE_YEAR = 21; // kg CO2/year (1 tree)
 ```
 
@@ -664,6 +834,7 @@ Edit `src/data/geofences.js`:
 
 ```javascript
 export const geofences = [
+<<<<<<< HEAD
   {
     id: 1,
     name: "Home",
@@ -684,6 +855,28 @@ export const geofences = [
     lat: 18.6213,
     lng: 73.9121,
     radiusKm: 0.4,
+=======
+  { 
+    id: 1, 
+    name: 'Home', 
+    lat: 18.6702, 
+    lng: 73.7902, 
+    radiusKm: 0.5 
+  },
+  { 
+    id: 2, 
+    name: 'Office', 
+    lat: 18.5204, 
+    lng: 73.8567, 
+    radiusKm: 0.3 
+  },
+  { 
+    id: 3, 
+    name: 'College', 
+    lat: 18.6213, 
+    lng: 73.9121, 
+    radiusKm: 0.4 
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
   },
 ];
 ```
@@ -713,19 +906,28 @@ Editable Settings:
 Contributions are welcome! Please follow these guidelines:
 
 ### For Bug Reports
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 1. Check existing issues first
 2. Provide clear description and reproduction steps
 3. Include browser/device info and console errors
 
 ### For Feature Requests
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 1. Describe the feature and use case
 2. Explain how it improves the app
 3. Include mockups/wireframes if applicable
 
 ### For Code Contributions
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/your-feature-name`
 3. Follow existing code style and patterns
@@ -735,7 +937,10 @@ Contributions are welcome! Please follow these guidelines:
 7. Open a Pull Request with detailed description
 
 ### Development Guidelines
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - Use React hooks for all new components
 - Follow existing Zustand patterns for state
 - Add comments for complex logic
@@ -780,25 +985,37 @@ Special thanks to:
 ### Common Issues
 
 #### 🔴 "Firebase not initialized"
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - Check all Firebase credentials in `.env.local`
 - Verify database URL format
 - Ensure Firebase project has Realtime Database enabled
 
 #### 🔴 "Map not loading"
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - Clear browser cache
 - Check browser console for Leaflet errors
 - Verify OpenStreetMap is accessible in your region
 
 #### 🔴 "Location not updating"
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - Allow location permissions in browser
 - Check browser geolocation settings
 - Verify Firebase database rules allow reads/writes
 
 #### 🔴 "Trips not syncing"
+<<<<<<< HEAD
 
+=======
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
 - Confirm Firebase rules are correctly set
 - Check network connection
 - Review browser developer tools for Firebase errors
@@ -843,4 +1060,8 @@ Potential enhancements:
 
 **Stay safe, ride green! 🌱⚡**
 
+<<<<<<< HEAD
 _FamilyTrack EV - Making family EV riding safer and more eco-conscious._
+=======
+*FamilyTrack EV - Making family EV riding safer and more eco-conscious.*
+>>>>>>> b257bcb57694fe625e2b22f96c3ae73be24d8ab1
