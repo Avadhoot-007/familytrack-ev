@@ -1,3 +1,5 @@
+// CoachingTipsSystem: Real-time riding tips displayed as fixed notification panel
+// Prioritizes critical/high-priority tips over info (dismissible)
 import React, { useState } from 'react';
 
 const CoachingTipsSystem = ({ tips = [], ecoScore = 0, onDismiss = () => {} }) => {

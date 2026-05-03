@@ -1,5 +1,8 @@
+// tripPDFExport.js — Generate and download trip summary as PDF
+// Used by WatcherDashboard and TripSummaryCard
 import { generateImpactReport } from './ecoImpactCalculations';
 
+// Summarize trip metrics and efficiency
 export const generateTripSummary = (tripData) => {
   const {
     distance = 0,

@@ -1,15 +1,11 @@
-// ---------------------------------------------------------------------------
-// Charging Stations Service — OpenStreetMap Overpass API (free, no key)
-// FIX 1: Use GET request (avoids CORS preflight on some browsers)
-// FIX 2: Wider radius fallback (2km → 5km → 10km) if 0 results
-// FIX 3: Expose fetch errors so UI can show retry instead of silent empty
-// FIX 4: Longer timeout (10s → 25s) — Overpass can be slow
-// ---------------------------------------------------------------------------
-
+// Charging Stations Service — queries OpenStreetMap Overpass API
+// Implements progressive radius fallback and 5-min caching
+// Throws on network errors so UI can handle retries
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 const CACHE = new Map(); // key: `${lat},${lon},${radius}` → { stations, fetchedAt }
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+// Build OSM Overpass query for charging stations (amenity='charging_station' or fuel with electric)
 const buildQuery = (lat, lon, radiusM) => `
 [out:json][timeout:25];
 (
@@ -92,15 +88,11 @@ export const fetchChargingStations = async (lat, lon, radiusKm = 3) => {
   return []; // nothing found even at max radius
 };
 
-/**
- * Build a Google Maps directions URL.
- */
+// Open directions URL in Google Maps
 export const buildMapsUrl = (fromLat, fromLon, toLat, toLon) =>
   `https://www.google.com/maps/dir/?api=1&origin=${fromLat},${fromLon}&destination=${toLat},${toLon}&travelmode=driving`;
 
-/**
- * Haversine distance in km.
- */
+// Haversine distance in km (also used in locationService.js)
 const haversineKm = (lat1, lon1, lat2, lon2) => {
   const R    = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;

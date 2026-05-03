@@ -1,3 +1,6 @@
+// FamilyPanel: Family group management — members, invite codes, roles
+// Allows creating/regenerating invite codes and viewing family structure
+// Requires Firebase auth (guest users cannot access family details)
 import { useState, useEffect, useCallback } from 'react';
 import { ref, get, set, push, update } from 'firebase/database';
 import { onAuthStateChanged } from 'firebase/auth';

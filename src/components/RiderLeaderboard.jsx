@@ -1,3 +1,6 @@
+// RiderLeaderboard: Displays eco-riding rankings across family members
+// Aggregates trip stats (avg eco score, best/worst, distance) from Firebase
+// Refetches every 10 seconds to stay current
 import { useState, useEffect } from "react";
 import { ref, get } from "firebase/database";
 import { db } from "../config/firebase";

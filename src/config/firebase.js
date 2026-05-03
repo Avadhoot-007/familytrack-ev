@@ -1,7 +1,10 @@
+// Firebase configuration and initialization
+// Exports db (Realtime Database), auth, and googleProvider for use throughout app
 import { initializeApp } from 'firebase/app';
 import { getDatabase } from 'firebase/database';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 
+// Load config from environment variables (set in .env)
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,

@@ -1,10 +1,11 @@
+// AdminPanel: Edit eco-scoring constants and environmental impact factors from Firebase
+// Allows tuning: throttle/speed/accel weights, thresholds, CO2 factors
+// Requires admin password; changes sync to all devices via Firebase config/ecoConstants
 import React, { useState, useEffect } from "react";
 import { db } from "../config/firebase";
 import { ref, get, set } from "firebase/database";
 
-// ---------------------------------------------------------------------------
 // Default constants (mirrors ecoScoring.js + ecoImpactCalculations.js)
-// ---------------------------------------------------------------------------
 const DEFAULTS = {
   // Eco Scoring weights (must sum to 100)
   throttleWeight: 35,

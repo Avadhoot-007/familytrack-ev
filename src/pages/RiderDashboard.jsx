@@ -1,3 +1,7 @@
+// RiderDashboard: Primary interface for EV riders
+// Tracks: trip metrics (distance, eco score, battery), GPS location, charging stations
+// Manages: trip start/end, SOS alerts, coaching tips, environmental impact display
+// Integrates with Zustand store for persistence across app
 import { useState, useEffect, useRef } from "react";
 import { ref, set } from "firebase/database";
 import { db } from "../config/firebase";
@@ -22,19 +26,20 @@ import { getCoachingTips } from "../utils/ecoImpactCalculations";
 import RiderTipsInbox from "../components/RiderTipsInbox";
 import "./RiderDashboard.css";
 
-// Ather Rizta Z Battery Specs
+// Ather Rizta Z EV battery specifications (3700 Wh capacity, consumption rates by mode)
 const BATTERY_SPECS = {
   capacity: 3700,
   consumption: { eco: 33, normal: 37, aggressive: 46 },
 };
 
-const BATTERY_BLOCK = 0;
-const BATTERY_CRITICAL = 10;
-const BATTERY_LOW = 25;
+// Battery level thresholds for alerts and warnings
+const BATTERY_BLOCK = 0;        // Stop trip
+const BATTERY_CRITICAL = 10;    // Emergency alert
+const BATTERY_LOW = 25;         // Warning alert
 
-const DRAIN_BASELINE_WH_KM = 37;
-const DRAIN_ALERT_RATIO = 1.2;
-
+// Battery drain monitoring for alert display
+const DRAIN_BASELINE_WH_KM = 37;        // Expected consumption per km
+const DRAIN_ALERT_RATIO = 1.2;          // Ratio threshold to warn of excess drain
 export default function RiderDashboard({ riderName, isActive = true }) {
   const [isSharing, setIsSharing] = useState(false);
   const [battery, setBattery] = useState(85);

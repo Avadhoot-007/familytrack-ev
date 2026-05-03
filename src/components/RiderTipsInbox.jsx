@@ -1,3 +1,5 @@
+// RiderTipsInbox: Notification hub for coaching tips sent by watchers
+// Displays: priority-based tips (high/medium/low/info), marks read/unread
 import { useState, useEffect } from 'react';
 import { ref, onValue, update } from 'firebase/database';
 import { db } from '../config/firebase';

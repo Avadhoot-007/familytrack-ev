@@ -1,3 +1,6 @@
+// Global state management using Zustand
+// Persists to localStorage and syncs trips with Firebase
+// Manages: auth, location, trip history, battery, alerts, coaching tips
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
@@ -146,7 +149,8 @@ export const useStore = create(
   ),
 );
 
-// ── Hydration — always merges Firebase trips, not just when local is empty ────
+// Hydration helper: Load trips from Firebase on app startup
+// Always merges Firebase trips with local store (avoids data loss)
 export const hydrateTripsFromStorage = async () => {
   return new Promise((resolve) => {
     setTimeout(async () => {

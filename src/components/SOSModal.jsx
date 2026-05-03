@@ -1,3 +1,6 @@
+// SOSModal: Emergency alert UI with hold-to-confirm pattern
+// Writes SOS event to Firebase (sosTriggered, sosTimestamp, sosLocation)
+// Watcher dashboard listens for SOS and displays emergency on map
 import { useState, useEffect, useRef } from 'react';
 import { ref, set, update } from 'firebase/database';
 import { db } from '../config/firebase';

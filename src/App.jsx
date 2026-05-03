@@ -1,3 +1,6 @@
+// src/App.jsx — main application entry
+// Provides authentication flows, family setup, and view routing between
+// Rider, Watcher, and Family panels.
 import { useState, useEffect } from "react";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { ref, get, set, push, update } from "firebase/database";
@@ -10,11 +13,17 @@ import { hydrateTripsFromStorage, useStore } from "./store";
 import { setEcoConstants } from "./utils/ecoScoring";
 import { setImpactConstants } from "./utils/ecoImpactCalculations";
 
+// generate a short 6-character invite code for family joins
+// Uses base36 random string, trimmed and uppercased for readability
 const makeInviteCode = () =>
   Math.random().toString(36).substring(2, 8).toUpperCase();
 
 // ── Family setup screen ───────────────────────────────────────────────────────
 
+// FamilySetup: UI and handlers for creating or joining a family group.
+// - Presents role selection (rider/watcher)
+// - Create: writes family, invite, and user records to Firebase
+// - Join: validates invite code and updates family membership
 function FamilySetup({ user, onDone }) {
   const [step, setStep] = useState("choose");
   const [role, setRole] = useState(null);
@@ -346,6 +355,9 @@ function FamilySetup({ user, onDone }) {
 
 // ── Auth / landing screen ─────────────────────────────────────────────────────
 
+// AuthScreen: Landing screen offering Google sign-in or guest mode.
+// - onGoogle: triggers Firebase popup sign-in
+// - onGuest: stores a local guest name (no sync)
 function AuthScreen({ onGuest, onGoogle, loading, error }) {
   const [name, setName] = useState("");
 
@@ -520,6 +532,11 @@ function AuthScreen({ onGuest, onGoogle, loading, error }) {
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 
+// App: top-level component managing global auth state and view routing.
+// Responsibilities:
+// - Listen to Firebase auth changes and hydrate store
+// - Fetch configuration (eco constants) from Firebase
+// - Route between RiderDashboard, WatcherDashboard and FamilyPanel
 export default function App() {
   // ── Admin route — completely isolated, no auth/store involvement ──────────
   if (window.location.pathname === "/admin") {
@@ -818,6 +835,8 @@ export default function App() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+// tabStyle: small helper to return consistent tab button styles
+// active: whether the tab is selected; activeColor: color when active
 function tabStyle(active, activeColor) {
   return {
     padding: "7px 14px",

@@ -1,15 +1,12 @@
-// ---------------------------------------------------------------------------
-// Environmental Impact Hub Calculations
-// ---------------------------------------------------------------------------
+// Environmental Impact Hub calculations — CO2 savings, tree equivalents, badges
+// Constants: CO2_PER_KM_PETROL, TREE_ABSORBS_PER_YEAR, EV_EMISSIONS_FACTOR
+// Can be overridden via setImpactConstants() from Firebase config
 
 let CO2_PER_KM_PETROL = 0.192;
 let TREE_ABSORBS_PER_YEAR = 21;
 let EV_EMISSIONS_FACTOR = 0.05;
 
-/**
- * Called by App.jsx after fetching /config/ecoConstants from Firebase.
- * All keys are optional — only provided keys are updated.
- */
+// Update impact constants from Firebase config (called by App.jsx on load)
 export const setImpactConstants = (c = {}) => {
   if (c.co2PerKmPetrol != null) CO2_PER_KM_PETROL = c.co2PerKmPetrol;
   if (c.treeAbsorbsPerYear != null)
@@ -17,6 +14,7 @@ export const setImpactConstants = (c = {}) => {
   if (c.evEmissionsFactor != null) EV_EMISSIONS_FACTOR = c.evEmissionsFactor;
 };
 
+// Calculate CO2 emissions saved by using EV instead of petrol
 export const calculateCO2Savings = (distanceKm) => {
   const petrolEmissions = distanceKm * CO2_PER_KM_PETROL;
   const evEmissions = distanceKm * EV_EMISSIONS_FACTOR;
@@ -28,6 +26,7 @@ export const calculateCO2Savings = (distanceKm) => {
   };
 };
 
+// Convert CO2 savings to number of trees that would absorb same amount annually
 export const calculateTreeEquivalents = (co2Saved) => {
   const treesEquivalent = co2Saved / TREE_ABSORBS_PER_YEAR;
   return Math.round(treesEquivalent * 100) / 100;
@@ -41,6 +40,7 @@ const BADGE_THRESHOLDS = {
   champion: { co2: 1000, label: "Carbon Champion", desc: "Saved 1000kg CO2" },
 };
 
+// Unlock eco badges based on cumulative CO2 savings (gamification)
 export const getEcoBadges = (totalCO2Saved) => {
   const badges = [];
   const sortedThresholds = Object.entries(BADGE_THRESHOLDS).sort(
@@ -88,6 +88,7 @@ export const getNextBadgeTarget = (totalCO2Saved) => {
   return { target: maxThreshold.co2, remaining: 0, maxReached: true };
 };
 
+// Generate personalized coaching tips based on eco score and worst axis (throttle/speed/accel)
 export const getCoachingTips = (
   ecoScore = 0,
   worstAxis = "speed",
@@ -179,6 +180,7 @@ export const getCoachingTips = (
       ];
 };
 
+// Score for leaderboard ranking (combines eco score + CO2 saved + multiplier for high eco scores)
 export const calculateLeaderboardScore = (tripStats) => {
   const { ecoScore = 0, totalCO2Saved = 0 } = tripStats;
   const treeEquiv = calculateTreeEquivalents(totalCO2Saved);
@@ -186,6 +188,7 @@ export const calculateLeaderboardScore = (tripStats) => {
   return Math.round((ecoScore * 0.5 + treeEquiv * 10) * ecoMultiplier);
 };
 
+// Comprehensive trip impact report (used for PDF export and displays)
 export const generateImpactReport = (tripData) => {
   const { distance = 0, duration = 0, ecoScore = 0, avgSpeed = 0 } = tripData;
   const { savedCO2, petrolEquivalent } = calculateCO2Savings(distance);
@@ -202,10 +205,7 @@ export const generateImpactReport = (tripData) => {
   };
 };
 
-// ---------------------------------------------------------------------------
-// PDF Export (unchanged)
-// ---------------------------------------------------------------------------
-
+// Generate PDF trip summary with eco metrics, environmental impact, and coaching tips
 export const generateTripPDF = (tripData) => {
   const {
     riderName = "Rider",
@@ -379,6 +379,7 @@ export const generateTripPDF = (tripData) => {
   return pdfContent;
 };
 
+// Trigger browser download of trip PDF
 export const downloadTripPDF = (tripData) => {
   const pdfContent = generateTripPDF(tripData);
   const riderName = tripData.riderName || "Rider";

@@ -1,3 +1,5 @@
+// Generate dynamic coaching tips based on eco score and trip data
+// Tips vary by score level: <40 (throttle/braking), <60 (speed/route), <80 (encouragement), 80+ (achievement)
 export const generateCoachingTips = (ecoScore, tripData = {}) => {
   const tips = [];
 

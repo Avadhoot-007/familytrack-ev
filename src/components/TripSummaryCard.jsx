@@ -1,3 +1,5 @@
+// TripSummaryCard: Post-trip summary with eco metrics, battery consumption, PDF export
+// Displays: eco score, CO2 saved, range projections, speed metrics
 import { useState } from 'react';
 import { ref, set } from 'firebase/database';
 import { db } from '../config/firebase';
