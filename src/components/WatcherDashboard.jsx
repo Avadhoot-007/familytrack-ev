@@ -89,24 +89,28 @@ const createChargingIcon = () =>
     popupAnchor: [0, -16],
   });
 
-// ── Leaflet DivIcon: animated pulsing dot for replay head ────────────────────
+// ── Leaflet DivIcon: scooter emoji for replay head ───────────────────────────
 const createReplayIcon = (color) =>
   L.divIcon({
     className: "",
     html: `<div style="
-      width:16px;height:16px;border-radius:50%;
-      background:${color};border:3px solid white;
-      box-shadow:0 0 0 3px ${color}88;
-      animation:replayPulse 0.8s ease infinite alternate;">
+      width:34px;height:34px;border-radius:50%;
+      background:${color};
+      border:3px solid white;
+      display:flex;align-items:center;justify-content:center;
+      font-size:17px;line-height:1;
+      box-shadow:0 2px 10px ${color}99, 0 0 0 4px ${color}33;
+      animation:replayRing 1.2s ease infinite;">
+      🛵
     </div>
     <style>
-      @keyframes replayPulse {
-        from { box-shadow: 0 0 0 3px ${color}88; }
-        to   { box-shadow: 0 0 0 8px ${color}22; }
+      @keyframes replayRing {
+        0%,100% { box-shadow:0 2px 10px ${color}99, 0 0 0 4px ${color}33; }
+        50%      { box-shadow:0 2px 16px ${color}cc, 0 0 0 8px ${color}11; }
       }
     </style>`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8],
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
   });
 
 // ── Battery / drain alert thresholds ─────────────────────────────────────────
@@ -169,10 +173,40 @@ const TAB_STYLE = (active) => ({
   whiteSpace: "nowrap",
 });
 
+// ── Replay speed → ms per point lookup ───────────────────────────────────────
+// Speed 1 = 800ms/point (very slow, car-like)
+// Speed 5 = 300ms/point (default, smooth)
+// Speed 10 = 60ms/point (fast-forward)
+const SPEED_MS = [800, 600, 450, 350, 300, 220, 160, 120, 90, 60];
+const speedToMs = (speed) => SPEED_MS[Math.max(0, Math.min(9, speed - 1))];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ReplayPanner
+// Lives inside MapContainer. Watches replay head position and smoothly pans
+// the map to follow it. Uses panTo with animate:true for fluid movement.
+// ─────────────────────────────────────────────────────────────────────────────
+function ReplayPanner({ headPos }) {
+  const map = useMap();
+  const lastPosRef = useRef(null);
+
+  useEffect(() => {
+    if (!headPos) return;
+    const [lat, lon] = headPos;
+    if (!validCoords(lat, lon)) return;
+
+    // Only pan when position actually changed
+    const prev = lastPosRef.current;
+    if (prev && prev[0] === lat && prev[1] === lon) return;
+    lastPosRef.current = headPos;
+
+    map.panTo([lat, lon], { animate: true, duration: 0.5, easeLinearity: 0.5 });
+  }, [headPos, map]);
+
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TripScoreChart
-// Renders a small SVG sparkline of eco scores for the last 10 trips of one rider.
-// Shows average score, trend direction, and date range on x-axis.
 // ─────────────────────────────────────────────────────────────────────────────
 function TripScoreChart({ trips, riderName, color }) {
   const last10 = trips
@@ -284,7 +318,6 @@ function TripScoreChart({ trips, riderName, color }) {
         height={H}
         style={{ display: "block", overflow: "visible" }}
       >
-        {/* Grid lines at 0 / 50 / 100 */}
         {[0, 50, 100].map((val) => {
           const y = toY(val);
           if (y < PAD.top || y > PAD.top + chartH) return null;
@@ -311,11 +344,7 @@ function TripScoreChart({ trips, riderName, color }) {
             </g>
           );
         })}
-
-        {/* Shaded area under the line */}
         <path d={areaPath} fill={color} fillOpacity="0.08" />
-
-        {/* Score line */}
         <polyline
           points={polyPoints}
           fill="none"
@@ -324,8 +353,6 @@ function TripScoreChart({ trips, riderName, color }) {
           strokeLinejoin="round"
           strokeLinecap="round"
         />
-
-        {/* Data point dots — last point is larger */}
         {last10.map((t, i) => {
           const s = Number(t.score || t.ecoScore || 0);
           const cx = toX(i);
@@ -356,8 +383,6 @@ function TripScoreChart({ trips, riderName, color }) {
             </g>
           );
         })}
-
-        {/* Date labels on x-axis */}
         {last10.length > 0 && (
           <>
             <text
@@ -397,8 +422,6 @@ function TripScoreChart({ trips, riderName, color }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TripScoreCharts
-// Renders a TripScoreChart for every unique rider found in allTrips.
-// Looks up each rider's color from the shared riderColorMap ref.
 // ─────────────────────────────────────────────────────────────────────────────
 function TripScoreCharts({ allTrips, riderColorMap }) {
   const riderNames = [
@@ -433,8 +456,6 @@ function TripScoreCharts({ allTrips, riderColorMap }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RainPrompt
-// Dismissible banner shown when OWM detects rain near an online rider.
-// Each prompt carries a unique id so individual banners can be closed.
 // ─────────────────────────────────────────────────────────────────────────────
 function RainPrompt({ prompts, onDismiss }) {
   if (!prompts.length) return null;
@@ -492,8 +513,6 @@ function RainPrompt({ prompts, onDismiss }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MapController
-// Leaflet hook component: fires onMapReady with the map instance once mounted,
-// and invalidates map size after 300ms to fix rendering in flex/grid containers.
 // ─────────────────────────────────────────────────────────────────────────────
 function MapController({ onMapReady }) {
   const map = useMap();
@@ -507,9 +526,6 @@ function MapController({ onMapReady }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SOSAlertModal
-// Full-screen modal displayed when a rider first triggers SOS.
-// Shows coordinates, battery, time, and Google Maps link.
-// Offers resolve (clears Firebase flag) or dismiss (moves to pending banner).
 // ─────────────────────────────────────────────────────────────────────────────
 function SOSAlertModal({ sosRider, onResolve, onClose }) {
   if (!sosRider) return null;
@@ -597,8 +613,6 @@ function SOSAlertModal({ sosRider, onResolve, onClose }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PendingSOSBanner
-// Compact alert card for SOS events that were dismissed from the modal
-// but haven't been resolved yet. Shown above the alerts scroll panel.
 // ─────────────────────────────────────────────────────────────────────────────
 function PendingSOSBanner({ sosRider, onResolve, resolving }) {
   const raw = sosRider.sosLocation;
@@ -706,8 +720,6 @@ function PendingSOSBanner({ sosRider, onResolve, resolving }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TripStatsSummary
-// Aggregated stat boxes for trips within filterDays window.
-// Shows total trips, avg/best/worst score, total distance, avg speed.
 // ─────────────────────────────────────────────────────────────────────────────
 function TripStatsSummary({ trips, filterDays }) {
   const now = Date.now();
@@ -782,9 +794,6 @@ function TripStatsSummary({ trips, filterDays }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TripHistoryTable
-// Sortable trip table filtered by filterDays.
-// Each row has View (opens detail modal) and PDF (downloads trip report) actions.
-// Also exposes a Replay button when the trip has a stored route array.
 // ─────────────────────────────────────────────────────────────────────────────
 function TripHistoryTable({
   trips,
@@ -888,7 +897,6 @@ function TripHistoryTable({
                 {trip.avgSpeedKmh ?? "—"}
               </td>
               <td style={{ padding: "8px", textAlign: "center" }}>
-                {/* View — opens TripSummaryCard + CoachingTipCard modal */}
                 <button
                   onClick={() => onTripClick(trip)}
                   style={{
@@ -904,7 +912,6 @@ function TripHistoryTable({
                 >
                   View
                 </button>
-                {/* PDF — generates and downloads a trip report */}
                 <button
                   onClick={() => onExportPDF(trip)}
                   style={{
@@ -920,7 +927,6 @@ function TripHistoryTable({
                 >
                   PDF
                 </button>
-                {/* Replay — only shown if the trip has stored route points */}
                 {validRoute(trip.route) && (
                   <button
                     onClick={() => onReplay(trip)}
@@ -949,11 +955,6 @@ function TripHistoryTable({
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AlertItem
-// Single alert row with contextual action buttons:
-//   charging_reminder → send low_battery coaching tip
-//   critical_battery  → send critical_battery tip + maps link
-//   drain_warning     → send eco throttle tip
-//   rain_tip          → send rain safety tip
 // ─────────────────────────────────────────────────────────────────────────────
 function AlertItem({ alert, onSendReminder }) {
   const bgColor =
@@ -1117,7 +1118,7 @@ function AlertItem({ alert, onSendReminder }) {
   );
 }
 
-// ── Coaching tip payloads sent to riders via Firebase coachingTips node ───────
+// ── Coaching tip payloads ─────────────────────────────────────────────────────
 const REMINDER_TIPS = {
   low_battery: {
     title: "Low Battery — Find a Charger",
@@ -1151,8 +1152,6 @@ const REMINDER_TIPS = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RouteLegend
-// Absolute-positioned overlay on the map showing colored line swatches
-// for each online rider that has a current live route.
 // ─────────────────────────────────────────────────────────────────────────────
 function RouteLegend({ riders, riderColorMap }) {
   const onlineWithRoutes = Object.entries(riders).filter(
@@ -1209,66 +1208,70 @@ function RouteLegend({ riders, riderColorMap }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ReplayOverlay
-// Floating control panel shown while a route replay is active.
-// Displays rider name, progress (current point / total), speed slider,
-// and Stop button. Positioned bottom-left of map wrapper.
+// Improved: cleaner layout, speed labels (Slow/Fast), pause indicator.
 // ─────────────────────────────────────────────────────────────────────────────
 function ReplayOverlay({ replay, onStop, onSpeedChange }) {
   if (!replay.active) return null;
   const pct = Math.round(
-    (replay.currentIndex / (replay.totalPoints - 1)) * 100,
+    (replay.currentIndex / Math.max(replay.totalPoints - 1, 1)) * 100,
   );
+  const msPerPt = speedToMs(replay.speed);
+  const speedLabel =
+    replay.speed <= 2
+      ? "Slow"
+      : replay.speed <= 5
+        ? "Normal"
+        : replay.speed <= 8
+          ? "Fast"
+          : "Max";
 
   return (
     <div
       style={{
         position: "absolute",
-        bottom: "60px",
+        bottom: "70px",
         left: "10px",
         zIndex: 1000,
-        background: "rgba(0,0,0,0.85)",
+        background: "rgba(10,10,15,0.92)",
         border: `1px solid ${replay.color}`,
-        borderRadius: "10px",
-        padding: "12px 14px",
-        minWidth: "200px",
+        borderRadius: "12px",
+        padding: "14px 16px",
+        minWidth: "220px",
+        maxWidth: "260px",
         color: "#fff",
         fontSize: "13px",
-        boxShadow: `0 4px 20px ${replay.color}44`,
+        boxShadow: `0 6px 24px ${replay.color}44`,
+        backdropFilter: "blur(4px)",
       }}
     >
-      {/* Replay header */}
+      {/* Header row */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: "8px",
+          marginBottom: "10px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <div
-            style={{
-              width: "8px",
-              height: "8px",
-              borderRadius: "50%",
-              background: replay.color,
-              animation: "replayDot 0.8s ease infinite alternate",
-            }}
-          />
-          <span style={{ fontWeight: "700", color: replay.color }}>
-            ▶ Replaying
+        <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+          <span style={{ fontSize: "18px" }}>🛵</span>
+          <span
+            style={{ fontWeight: "700", color: replay.color, fontSize: "13px" }}
+          >
+            Route Replay
           </span>
         </div>
         <button
           onClick={onStop}
           style={{
-            background: "rgba(255,255,255,0.1)",
-            border: "1px solid #555",
-            color: "#fff",
-            borderRadius: "4px",
-            padding: "2px 8px",
+            background: "rgba(255,80,80,0.15)",
+            border: "1px solid rgba(255,80,80,0.4)",
+            color: "#ff6060",
+            borderRadius: "6px",
+            padding: "3px 10px",
             cursor: "pointer",
             fontSize: "12px",
+            fontWeight: "600",
           }}
         >
           ■ Stop
@@ -1276,17 +1279,26 @@ function ReplayOverlay({ replay, onStop, onSpeedChange }) {
       </div>
 
       {/* Rider name */}
-      <p style={{ margin: "0 0 6px", color: "#ccc", fontSize: "12px" }}>
+      <p
+        style={{
+          margin: "0 0 8px",
+          color: "#bbb",
+          fontSize: "12px",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
         {replay.riderName}
       </p>
 
       {/* Progress bar */}
       <div
         style={{
-          background: "#333",
-          borderRadius: "3px",
-          height: "4px",
-          marginBottom: "6px",
+          background: "#222",
+          borderRadius: "4px",
+          height: "5px",
+          marginBottom: "5px",
           overflow: "hidden",
         }}
       >
@@ -1294,29 +1306,34 @@ function ReplayOverlay({ replay, onStop, onSpeedChange }) {
           style={{
             width: `${pct}%`,
             height: "100%",
-            background: replay.color,
-            transition: "width 0.1s",
-            borderRadius: "3px",
+            background: `linear-gradient(90deg, ${replay.color}99, ${replay.color})`,
+            borderRadius: "4px",
+            transition: `width ${msPerPt}ms linear`,
           }}
         />
       </div>
 
-      {/* Point counter */}
-      <p style={{ margin: "0 0 8px", fontSize: "11px", color: "#888" }}>
-        Point {replay.currentIndex + 1} / {replay.totalPoints} ({pct}%)
+      {/* Progress text */}
+      <p
+        style={{
+          margin: "0 0 10px",
+          fontSize: "11px",
+          color: "#666",
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <span>
+          Pt {replay.currentIndex + 1} / {replay.totalPoints}
+        </span>
+        <span style={{ color: replay.color, fontWeight: "600" }}>{pct}%</span>
       </p>
 
       {/* Speed control */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          fontSize: "11px",
-          color: "#aaa",
-        }}
-      >
-        <span>Speed:</span>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <span style={{ fontSize: "10px", color: "#555", whiteSpace: "nowrap" }}>
+          Slow
+        </span>
         <input
           type="range"
           min="1"
@@ -1326,18 +1343,20 @@ function ReplayOverlay({ replay, onStop, onSpeedChange }) {
           onChange={(e) => onSpeedChange(Number(e.target.value))}
           style={{ flex: 1, accentColor: replay.color, cursor: "pointer" }}
         />
-        <span
-          style={{ minWidth: "16px", color: replay.color, fontWeight: "700" }}
-        >
-          {replay.speed}x
+        <span style={{ fontSize: "10px", color: "#555", whiteSpace: "nowrap" }}>
+          Fast
         </span>
       </div>
-
-      <style>{`
-        @keyframes replayDot {
-          from { opacity: 1; } to { opacity: 0.3; }
-        }
-      `}</style>
+      <p
+        style={{
+          margin: "4px 0 0",
+          fontSize: "10px",
+          color: "#555",
+          textAlign: "center",
+        }}
+      >
+        {speedLabel} · {msPerPt}ms / point
+      </p>
     </div>
   );
 }
@@ -1346,10 +1365,8 @@ function ReplayOverlay({ replay, onStop, onSpeedChange }) {
 // WatcherDashboard — main component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function WatcherDashboard() {
-  // ── Global store ───────────────────────────────────────────────────────────
   const familyId = useStore((s) => s.familyId);
 
-  // ── Core state ─────────────────────────────────────────────────────────────
   const [riders, setRiders] = useState({});
   const [alerts, setAlerts] = useState([]);
   const [allTrips, setAllTrips] = useState([]);
@@ -1369,14 +1386,8 @@ export default function WatcherDashboard() {
   const [showGeofenceEditor, setShowGeofenceEditor] = useState(false);
 
   // ── Route replay state ─────────────────────────────────────────────────────
-  // replay.active        — whether animation is currently running
-  // replay.route         — full array of [lat,lon] points for the trip
-  // replay.currentIndex  — index of the "head" point currently shown
-  // replay.totalPoints   — length of route array
-  // replay.color         — rider color for polyline + overlay accent
-  // replay.riderName     — display name shown in overlay
-  // replay.speed         — playback multiplier (1–10), controls interval timing
-  // replay.visibleRoute  — slice of route[0..currentIndex] drawn as polyline
+  // speed: 1–10 maps to SPEED_MS array (ms per point, not points per tick)
+  // visibleRoute: grows one point per tick for smooth animation
   const [replay, setReplay] = useState({
     active: false,
     route: [],
@@ -1384,12 +1395,10 @@ export default function WatcherDashboard() {
     totalPoints: 0,
     color: "#8e24aa",
     riderName: "",
-    speed: 3,
+    speed: 5, // default: "Normal" feel
     visibleRoute: [],
   });
 
-  // Interval ref for replay ticker — stored in ref so cleanup doesn't need
-  // replay in its dependency array (avoids stale closure on speed change)
   const replayIntervalRef = useRef(null);
 
   // ── Misc refs ──────────────────────────────────────────────────────────────
@@ -1404,13 +1413,11 @@ export default function WatcherDashboard() {
   const previousInsideRef = useRef({});
   const sosProcessedRef = useRef({});
 
-  // Use familyId-scoped or static geofences
   const activeGeofences =
     familyId && firebaseGeofences.length > 0
       ? firebaseGeofences
       : staticGeofences;
 
-  // Store map instance when MapController fires onMapReady
   const handleMapReady = useCallback((m) => {
     mapRef.current = m;
   }, []);
@@ -1440,7 +1447,6 @@ export default function WatcherDashboard() {
     return () => unsub();
   }, [familyId]);
 
-  // ── Fetch charging stations near a coordinate (cached via service) ─────────
   const fetchMapStations = useCallback(async (lat, lon) => {
     if (chargingFetchedRef.current) return;
     chargingFetchedRef.current = true;
@@ -1452,7 +1458,6 @@ export default function WatcherDashboard() {
     }
   }, []);
 
-  // ── Poll OWM weather for all online riders every 5 minutes ────────────────
   const pollWeather = useCallback(async (currentRiders) => {
     if (!OWM_KEY) return;
     const onlineEntries = Object.entries(currentRiders).filter(([, r]) => {
@@ -1471,7 +1476,6 @@ export default function WatcherDashboard() {
 
         setRiderWeather((prev) => ({ ...prev, [riderId]: weather }));
 
-        // Trigger rain prompt once per rider per rain event
         if (isRaining(weather.id) && !rainPromptedRef.current[riderId]) {
           rainPromptedRef.current[riderId] = true;
           const promptId = `rain-${riderId}-${Date.now()}`;
@@ -1493,7 +1497,6 @@ export default function WatcherDashboard() {
     [],
   );
 
-  // ── Add alert to the scrollable panel (max 50 kept) ───────────────────────
   const addAlert = (message, type = "warning", extra = {}) => {
     setAlerts((prev) => [
       { id: `alert-${Date.now()}-${Math.random()}`, message, type, ...extra },
@@ -1501,7 +1504,6 @@ export default function WatcherDashboard() {
     ]);
   };
 
-  // ── Send a coaching tip to rider's Firebase inbox ─────────────────────────
   const handleSendReminder = async (riderId, riderName, tipType) => {
     const key = `${riderId}_${tipType}`;
     setReminderStatus((prev) => ({ ...prev, [key]: "sending" }));
@@ -1532,19 +1534,12 @@ export default function WatcherDashboard() {
   };
 
   // ── Firebase: main riders listener ────────────────────────────────────────
-  // Subscribes to riders/ and handles:
-  //   - Assigning stable color per rider
-  //   - SOS detection and modal trigger
-  //   - Battery / drain / range alerts
-  //   - Geofence entry/exit alerts
-  //   - Flattening all trips into allTrips state for history table
   useEffect(() => {
     const ridersRef = ref(db, "riders");
     const unsubscribe = onValue(ridersRef, (snapshot) => {
       const data = snapshot.val();
       if (!data) return;
 
-      // Assign index + color to new riders on first sight
       Object.keys(data).forEach((riderId) => {
         if (riderIndexMap.current[riderId] === undefined) {
           const idx = Object.keys(riderIndexMap.current).length;
@@ -1556,8 +1551,6 @@ export default function WatcherDashboard() {
       setRiders(data);
 
       Object.entries(data).forEach(([riderId, riderData]) => {
-        // ── SOS detection ──────────────────────────────────────────────────
-        // sosProcessedRef prevents re-showing the modal on every Firebase update
         if (
           riderData.sosTriggered === true &&
           !sosProcessedRef.current[riderId]
@@ -1585,7 +1578,6 @@ export default function WatcherDashboard() {
         const riderName = loc.name || riderId;
         if (!validCoords(loc.lat, lon)) return;
 
-        // ── Battery alerts ─────────────────────────────────────────────────
         const bat = Number(loc.battery ?? 100);
         if (!batteryAlertedRef.current[riderId])
           batteryAlertedRef.current[riderId] = {};
@@ -1618,7 +1610,6 @@ export default function WatcherDashboard() {
           );
         }
 
-        // Reset alert flags when battery recovers
         if (bat > BATTERY_LOW) {
           ba.low = false;
           ba.critical = false;
@@ -1628,7 +1619,6 @@ export default function WatcherDashboard() {
 
         if (isOnline && bat <= BATTERY_LOW) fetchMapStations(loc.lat, lon);
 
-        // ── Drain rate & range alerts (based on latest completed trip) ─────
         const trips = riderData.trips ? Object.values(riderData.trips) : [];
         if (trips.length > 0) {
           const latest = trips.sort(
@@ -1674,10 +1664,6 @@ export default function WatcherDashboard() {
           }
         }
 
-        // ── Geofence entry/exit detection ──────────────────────────────────
-        // previousInsideRef tracks last known inside/outside state per zone.
-        // On first observation a zone is initialized silently to avoid
-        // spurious "entered" alerts on dashboard load.
         if (!previousInsideRef.current[riderId])
           previousInsideRef.current[riderId] = {};
         const riderZoneState = previousInsideRef.current[riderId];
@@ -1691,12 +1677,10 @@ export default function WatcherDashboard() {
             zoneLng,
             zone.radiusKm,
           );
-
           if (!(zone.id in riderZoneState)) {
-            riderZoneState[zone.id] = inside; // silent init
+            riderZoneState[zone.id] = inside;
             return;
           }
-
           const wasInside = riderZoneState[zone.id];
           if (inside && !wasInside) {
             addAlert(`✓ ${riderName} entered ${zone.name}`, "success");
@@ -1709,7 +1693,6 @@ export default function WatcherDashboard() {
         });
       });
 
-      // ── Flatten all riders' trips into a single array for the history table
       const trips = Object.entries(data).flatMap(([riderId, riderData]) => {
         if (!riderData.trips) return [];
         const riderName = riderData.location?.name || riderId;
@@ -1723,7 +1706,6 @@ export default function WatcherDashboard() {
       });
       setAllTrips(trips);
 
-      // Track first online rider for default map center
       const onlineEntry = Object.entries(data).find(([, r]) => {
         if (r.status !== "online" || !r.location) return false;
         return validCoords(r.location.lat, r.location.lon ?? r.location.lng);
@@ -1739,7 +1721,7 @@ export default function WatcherDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchMapStations]);
 
-  // ── Weather polling: separate listener + 5-min interval ───────────────────
+  // ── Weather polling ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!OWM_KEY) return;
     const ridersRef2 = ref(db, "riders");
@@ -1757,30 +1739,33 @@ export default function WatcherDashboard() {
   }, [pollWeather]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Route Replay Engine
-  // Triggered by the Replay button in TripHistoryTable.
-  // Uses setInterval to advance currentIndex by `speed` steps per tick (100ms).
-  // Each tick updates replay.visibleRoute to route[0..currentIndex] so the
-  // Polyline on the map grows progressively — the head marker jumps to the
-  // latest point. When currentIndex reaches the end the replay auto-stops.
+  // Route Replay Engine — IMPROVED
+  //
+  // Model: 1 point per tick. Tick interval = speedToMs(speed).
+  // speed=1 → 800ms/pt (slow car drive)
+  // speed=5 → 300ms/pt (default, smooth)
+  // speed=10 → 60ms/pt (fast-forward)
+  //
+  // Auto-pan: ReplayPanner component inside MapContainer handles smooth panTo.
   // ─────────────────────────────────────────────────────────────────────────
 
-  // Start replay for a given trip object
   const handleStartReplay = useCallback((trip) => {
     if (!validRoute(trip.route)) return;
 
-    // Stop any currently running replay first
+    // Stop any currently running replay
     if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
 
     const color = trip.riderColor || "#8e24aa";
     const totalPoints = trip.route.length;
 
-    // Pan map to start of route
+    // Pan to start, zoom in a bit more for detail
     if (mapRef.current && trip.route[0]) {
-      mapRef.current.setView(trip.route[0], 14);
+      mapRef.current.setView(trip.route[0], 15, {
+        animate: true,
+        duration: 0.8,
+      });
     }
 
-    // Initialise replay state at point 0
     setReplay({
       active: true,
       route: trip.route,
@@ -1788,63 +1773,54 @@ export default function WatcherDashboard() {
       totalPoints,
       color,
       riderName: trip.riderName || trip.riderId || "Rider",
-      speed: 3,
+      speed: 5, // default mid-speed
       visibleRoute: [trip.route[0]],
     });
   }, []);
 
-  // Advance replay one step — called inside setInterval
-  // Uses functional setState to read current index without stale closure
+  // stepReplay: always advances exactly 1 point per call.
+  // Interval duration controls perceived speed, not step size.
   const stepReplay = useCallback(() => {
     setReplay((prev) => {
       if (!prev.active) return prev;
 
-      // Advance by `speed` points per tick for faster replay at higher speeds
-      const nextIndex = Math.min(
-        prev.currentIndex + prev.speed,
-        prev.totalPoints - 1,
-      );
-      const visibleRoute = prev.route.slice(0, nextIndex + 1);
+      const nextIndex = prev.currentIndex + 1;
 
-      if (nextIndex >= prev.totalPoints - 1) {
-        // Replay finished — clear interval and mark inactive
+      if (nextIndex >= prev.totalPoints) {
+        // Reached end — stop
         if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
         replayIntervalRef.current = null;
-        return {
-          ...prev,
-          currentIndex: nextIndex,
-          visibleRoute,
-          active: false,
-        };
+        return { ...prev, active: false };
       }
 
+      const visibleRoute = prev.route.slice(0, nextIndex + 1);
       return { ...prev, currentIndex: nextIndex, visibleRoute };
     });
   }, []);
 
-  // When replay becomes active, start the ticker interval
+  // When active state or speed changes, restart the interval with correct timing
   useEffect(() => {
-    if (replay.active) {
-      replayIntervalRef.current = setInterval(stepReplay, 100);
-    } else {
-      if (replayIntervalRef.current) {
-        clearInterval(replayIntervalRef.current);
-        replayIntervalRef.current = null;
-      }
+    // Clear existing interval first
+    if (replayIntervalRef.current) {
+      clearInterval(replayIntervalRef.current);
+      replayIntervalRef.current = null;
     }
+
+    if (replay.active) {
+      const ms = speedToMs(replay.speed);
+      replayIntervalRef.current = setInterval(stepReplay, ms);
+    }
+
     return () => {
       if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
     };
-  }, [replay.active, stepReplay]);
+  }, [replay.active, replay.speed, stepReplay]);
 
-  // Speed change: restart interval with updated speed
-  // (stepReplay reads speed from state via functional update so no restart needed,
-  //  but we re-sync interval timing all the same)
+  // Speed change — just update state; the effect above restarts interval
   const handleReplaySpeedChange = useCallback((newSpeed) => {
     setReplay((prev) => ({ ...prev, speed: newSpeed }));
   }, []);
 
-  // Stop replay and clear the drawn route from the map
   const handleStopReplay = useCallback(() => {
     if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
     replayIntervalRef.current = null;
@@ -1856,13 +1832,18 @@ export default function WatcherDashboard() {
     }));
   }, []);
 
-  // Cleanup on unmount
   useEffect(
     () => () => {
       if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
     },
     [],
   );
+
+  // Derive head position for ReplayPanner
+  const replayHeadPos =
+    replay.active && replay.visibleRoute.length > 0
+      ? replay.visibleRoute[replay.visibleRoute.length - 1]
+      : null;
 
   // ── Derived map data ───────────────────────────────────────────────────────
   const defaultCenter = [18.5204, 73.8567];
@@ -1884,7 +1865,6 @@ export default function WatcherDashboard() {
       validCoords(r.location.lat, r.location.lon ?? r.location.lng),
   );
 
-  // ── PDF export handler ─────────────────────────────────────────────────────
   const handleExportPDF = (trip) => {
     try {
       downloadTripPDF({
@@ -1904,7 +1884,6 @@ export default function WatcherDashboard() {
     }
   };
 
-  // ── SOS resolve: clears sosTriggered flag on Firebase ─────────────────────
   const handleSOSResolve = async (riderIdOverride) => {
     const targetId = riderIdOverride ?? sosRider?.riderId;
     if (!targetId) return;
@@ -1930,7 +1909,6 @@ export default function WatcherDashboard() {
     }
   };
 
-  // Move SOS from modal to persistent pending banner without resolving
   const handleSOSModalClose = (dismissedSosRider) => {
     if (dismissedSosRider?.riderId) {
       setPendingSosRiders((prev) => ({
@@ -1941,7 +1919,6 @@ export default function WatcherDashboard() {
     setSosRider(null);
   };
 
-  // ── Map pan helpers ────────────────────────────────────────────────────────
   const handleRecenterMap = () => {
     if (!mapRef.current) return;
     if (
@@ -1982,7 +1959,7 @@ export default function WatcherDashboard() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="watcher-dashboard">
-      {/* ── Header row: title + Geofence toggle button ─────────────────────── */}
+      {/* Header */}
       <div
         style={{
           display: "flex",
@@ -2027,10 +2004,8 @@ export default function WatcherDashboard() {
         </button>
       </div>
 
-      {/* Rain dismissible banners */}
       <RainPrompt prompts={rainPrompts} onDismiss={dismissRainPrompt} />
 
-      {/* Warning if OWM key is missing */}
       {!OWM_KEY && (
         <div
           style={{
@@ -2049,7 +2024,6 @@ export default function WatcherDashboard() {
         </div>
       )}
 
-      {/* Collapsible geofence editor */}
       {showGeofenceEditor && (
         <div style={{ marginBottom: "24px" }}>
           <GeofenceEditor familyId={familyId} />
@@ -2082,7 +2056,7 @@ export default function WatcherDashboard() {
         </div>
       )}
 
-      {/* ── Rider status pills ──────────────────────────────────────────────── */}
+      {/* Rider pills */}
       <div className="watcher-pills-container">
         {Object.entries(riders).map(([riderId, riderData]) => {
           const isOnline = riderData.status === "online";
@@ -2136,11 +2110,10 @@ export default function WatcherDashboard() {
         })}
       </div>
 
-      {/* ── Map + Alerts two-column grid ───────────────────────────────────── */}
+      {/* Map + Alerts grid */}
       <div className="watcher-map-alerts-grid">
-        {/* Map wrapper — position:relative so absolute overlays work */}
         <div className="map-wrapper">
-          {/* Map control buttons — bottom-right */}
+          {/* Map controls — bottom-right */}
           <div
             style={{
               position: "absolute",
@@ -2168,7 +2141,7 @@ export default function WatcherDashboard() {
             </button>
           </div>
 
-          {/* Routes toggle — top-right */}
+          {/* Routes toggle */}
           <button
             onClick={() => setShowRoutes((v) => !v)}
             style={{
@@ -2191,7 +2164,7 @@ export default function WatcherDashboard() {
             {showRoutes ? "🛣️ Routes ON" : "🛣️ Routes OFF"}
           </button>
 
-          {/* Charging station count badge — top-left */}
+          {/* Charging badge */}
           {chargingStations.length > 0 && (
             <div
               style={{
@@ -2210,14 +2183,14 @@ export default function WatcherDashboard() {
             </div>
           )}
 
-          {/* ── Route Replay overlay control panel ──────────────────────── */}
+          {/* Replay overlay control panel */}
           <ReplayOverlay
             replay={replay}
             onStop={handleStopReplay}
             onSpeedChange={handleReplaySpeedChange}
           />
 
-          {/* ── Leaflet map ────────────────────────────────────────────── */}
+          {/* Leaflet map */}
           <MapContainer center={mapCenter} zoom={13} className="map-container">
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -2227,7 +2200,12 @@ export default function WatcherDashboard() {
             />
             <MapController onMapReady={handleMapReady} />
 
-            {/* Live routes for online riders */}
+            {/* Auto-pan during replay */}
+            {replay.active && replayHeadPos && (
+              <ReplayPanner headPos={replayHeadPos} />
+            )}
+
+            {/* Live routes */}
             {showRoutes &&
               onlineRiders.map(([riderId, riderData]) => {
                 const route = riderData.currentRoute;
@@ -2248,7 +2226,7 @@ export default function WatcherDashboard() {
                 );
               })}
 
-            {/* Last-trip ghost routes for offline riders */}
+            {/* Ghost routes for offline riders */}
             {showRoutes &&
               Object.entries(riders).map(([riderId, riderData]) => {
                 if (riderData.status === "online") return null;
@@ -2276,27 +2254,46 @@ export default function WatcherDashboard() {
                 );
               })}
 
-            {/* ── Route replay animated polyline + head marker ─────────── */}
-            {replay.active && validRoute(replay.visibleRoute) && (
+            {/* ── Route replay: ghost of full route + growing colored portion ── */}
+            {replay.active && validRoute(replay.route) && (
               <>
-                {/* Drawn portion of the route so far */}
+                {/* Full route ghost — shows where the trip goes */}
                 <Polyline
-                  key="replay-line"
-                  positions={replay.visibleRoute}
+                  key="replay-ghost"
+                  positions={replay.route}
                   pathOptions={{
                     color: replay.color,
-                    weight: 5,
-                    opacity: 0.95,
+                    weight: 3,
+                    opacity: 0.18,
+                    dashArray: "4 6",
                     lineJoin: "round",
                     lineCap: "round",
+                    smoothFactor: 1,
                   }}
                 />
-                {/* Pulsing head marker at the current replay position */}
-                <Marker
-                  key="replay-head"
-                  position={replay.visibleRoute[replay.visibleRoute.length - 1]}
-                  icon={createReplayIcon(replay.color)}
-                />
+                {/* Visited portion — grows as replay advances */}
+                {validRoute(replay.visibleRoute) && (
+                  <Polyline
+                    key="replay-line"
+                    positions={replay.visibleRoute}
+                    pathOptions={{
+                      color: replay.color,
+                      weight: 5,
+                      opacity: 0.95,
+                      lineJoin: "round",
+                      lineCap: "round",
+                      smoothFactor: 1,
+                    }}
+                  />
+                )}
+                {/* Scooter head marker */}
+                {replayHeadPos && (
+                  <Marker
+                    key="replay-head"
+                    position={replayHeadPos}
+                    icon={createReplayIcon(replay.color)}
+                  />
+                )}
               </>
             )}
 
@@ -2375,7 +2372,7 @@ export default function WatcherDashboard() {
               );
             })}
 
-            {/* Offline rider markers (dimmed) */}
+            {/* Offline rider markers */}
             {offlineRiders.map(([riderId, riderData]) => {
               const name = riderData.location?.name || riderId;
               const lon = riderData.location.lon ?? riderData.location.lng;
@@ -2463,17 +2460,15 @@ export default function WatcherDashboard() {
             ))}
           </MapContainer>
 
-          {/* Live route legend overlay (top-left of map) */}
           {showRoutes && (
             <RouteLegend riders={riders} riderColorMap={riderColorMap} />
           )}
         </div>
 
-        {/* ── Alerts panel ─────────────────────────────────────────────────── */}
+        {/* Alerts panel */}
         <div>
           <h3 style={{ margin: "0 0 12px", color: "#fff" }}>Recent Alerts</h3>
 
-          {/* Unresolved SOS banners above alerts */}
           {pendingSosEntries.length > 0 && (
             <div style={{ marginBottom: "12px" }}>
               <p
@@ -2499,7 +2494,6 @@ export default function WatcherDashboard() {
             </div>
           )}
 
-          {/* Reminder send status feedback strip */}
           <div className="watcher-reminder-strip">
             {Object.entries(reminderStatus).map(([key, status]) => (
               <div
@@ -2530,7 +2524,6 @@ export default function WatcherDashboard() {
             ))}
           </div>
 
-          {/* Scrollable alerts list */}
           <div className="watcher-alerts-scroll">
             {!alerts.length && (
               <p style={{ color: "#666", fontSize: "14px" }}>No alerts yet.</p>
@@ -2546,9 +2539,8 @@ export default function WatcherDashboard() {
         </div>
       </div>
 
-      {/* ── Trip History — tabbed section ──────────────────────────────────── */}
+      {/* Trip History */}
       <div>
-        {/* Tab header */}
         <div
           style={{
             display: "flex",
@@ -2561,7 +2553,6 @@ export default function WatcherDashboard() {
           <h3 style={{ margin: 0, color: "#fff", whiteSpace: "nowrap" }}>
             📊 Trip History
           </h3>
-
           <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
             <button
               onClick={() => setActiveTab("history")}
@@ -2582,8 +2573,6 @@ export default function WatcherDashboard() {
               📈 Trends
             </button>
           </div>
-
-          {/* Date filter — hidden on trends tab */}
           {activeTab !== "trends" && (
             <select
               id="filter-days"
@@ -2607,14 +2596,13 @@ export default function WatcherDashboard() {
           )}
         </div>
 
-        {/* Tab panels */}
         {activeTab === "history" && (
           <TripHistoryTable
             trips={allTrips}
             filterDays={filterDays}
             onTripClick={setSelectedTrip}
             onExportPDF={handleExportPDF}
-            onReplay={handleStartReplay} // passes replay handler to table
+            onReplay={handleStartReplay}
           />
         )}
         {activeTab === "stats" && (
@@ -2625,7 +2613,7 @@ export default function WatcherDashboard() {
         )}
       </div>
 
-      {/* ── Trip detail modal ──────────────────────────────────────────────── */}
+      {/* Trip detail modal */}
       {selectedTrip &&
         (() => {
           const tripForCard = {
@@ -2688,7 +2676,7 @@ export default function WatcherDashboard() {
           );
         })()}
 
-      {/* ── SOS full-screen modal ──────────────────────────────────────────── */}
+      {/* SOS modal */}
       {sosRider && (
         <SOSAlertModal
           sosRider={sosRider}
