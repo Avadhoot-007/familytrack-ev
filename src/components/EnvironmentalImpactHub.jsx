@@ -1264,9 +1264,10 @@ const EnvironmentalImpactHub = ({
       avgSpeed: trip.avgSpeedKmh || trip.avgSpeed || 0,
       // KEY FIX: map batteryUsedPercent → batteryUsed (PDF generator reads `batteryUsed`)
       // Without this, batteryUsed is undefined and the PDF defaults to 15%
-      batteryUsed: trip.batteryUsedPercent || trip.batteryUsed || 0,
+      batteryUsed: trip.batteryUsedPercent ?? trip.batteryUsed ?? 0,
       // batteryRemaining is already the correct field name — pass through as-is
-      batteryRemaining: trip.batteryRemaining || 0,
+      batteryRemaining: trip.batteryRemaining ?? null, // null triggers fallback, not 0
+      battery: trip.battery ?? 100,
     });
   };
 
