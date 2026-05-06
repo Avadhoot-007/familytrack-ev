@@ -55,7 +55,7 @@ const calculateStreak = (tripHistory) => {
 
 // ---------------------------------------------------------------------------
 // getWeeklyProgress
-// Aggregates trip stats for the current Sun→Sat calendar week.
+// Aggregates trip stats for the current Sun->Sat calendar week.
 // Used by ChallengesTab to evaluate weekly challenge completion.
 // Returns: tripCount, highScoreTrips, totalDistance, allAbove70, avgScore, daysRidden
 // ---------------------------------------------------------------------------
@@ -83,13 +83,13 @@ const getWeeklyProgress = (tripHistory) => {
     // How many trips scored 80 or above (used by Eco Warrior challenge)
     highScoreTrips: scores.filter((s) => s >= 80).length,
     totalDistance,
-    // Smooth Operator: all trips this week above 70, minimum 2 trips
+    // Smooth Operator: all trips this week above 70, minimum 2 trips required
     allAbove70: weekTrips.length >= 2 && scores.every((s) => s >= 70),
     avgScore:
       scores.length > 0
         ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
         : 0,
-    // Unique calendar days ridden this week
+    // Unique calendar days ridden this week (Set deduplicates multiple trips/day)
     daysRidden: new Set(
       weekTrips.map((t) => new Date(t.timestamp).toDateString()),
     ).size,
@@ -100,9 +100,9 @@ const getWeeklyProgress = (tripHistory) => {
 // WEEKLY_CHALLENGES
 // Static config array for all 6 weekly challenges.
 // Each challenge has:
-//   getValue(wp, streak) → current progress value
-//   target              → value needed to complete
-//   isBool              → if true, renders as done/not-done instead of a bar
+//   getValue(wp, streak) -> current progress value
+//   target               -> value needed to complete
+//   isBool               -> if true, renders as done/not-done instead of a bar
 // ---------------------------------------------------------------------------
 const WEEKLY_CHALLENGES = [
   {
@@ -154,7 +154,7 @@ const WEEKLY_CHALLENGES = [
     target: 3,
     unit: "days",
     color: "#F44336",
-    // streak is passed as second arg from ChallengesTab
+    // streak is passed as the second arg from ChallengesTab
     getValue: (wp, streak) => Math.min(streak, 3),
   },
   {
@@ -172,7 +172,7 @@ const WEEKLY_CHALLENGES = [
 // ---------------------------------------------------------------------------
 // daysUntilReset
 // Returns how many days until the next Monday (weekly challenge reset).
-// Sunday (day 0) → 7 days remaining; all other days → 7 - day.
+// Sunday (day 0) -> 7 days remaining; all other days -> 7 - day.
 // ---------------------------------------------------------------------------
 const daysUntilReset = () => {
   const now = new Date();
@@ -182,8 +182,9 @@ const daysUntilReset = () => {
 
 // ---------------------------------------------------------------------------
 // BadgeUnlockOverlay
-// Full-screen animated overlay shown for ~2.8 s when a new CO2 badge unlocks.
-// Auto-dismisses via setTimeout; onDone clears the newlyUnlocked state above.
+// Full-screen animated overlay shown for ~2.8s when a new CO2 badge unlocks.
+// Auto-dismisses via setTimeout; onDone clears newlyUnlocked state in parent.
+// CSS animations are defined in the <style> block inside EnvironmentalImpactHub.
 // ---------------------------------------------------------------------------
 function BadgeUnlockOverlay({ badge, onDone }) {
   useEffect(() => {
@@ -261,7 +262,7 @@ function BadgeUnlockOverlay({ badge, onDone }) {
 
 // ---------------------------------------------------------------------------
 // ChallengeCompleteOverlay
-// Full-screen animated overlay shown for ~2.4 s when a weekly challenge
+// Full-screen animated overlay shown for ~2.4s when a weekly challenge
 // is newly completed. Clicking the overlay also dismisses it (onClick={onDone}).
 // ---------------------------------------------------------------------------
 function ChallengeCompleteOverlay({ challenge, onDone }) {
@@ -334,15 +335,18 @@ function ChallengeCompleteOverlay({ challenge, onDone }) {
 // ---------------------------------------------------------------------------
 // ShareModal
 // Modal for sharing the rider's cumulative environmental impact stats.
-// Supports: Web Share API (native), WhatsApp, Twitter/X, Telegram, clipboard copy.
-// Stats are pre-formatted strings passed in via the `stats` prop from the
-// main component's `shareStats` object.
+// Supports: Web Share API (native mobile), WhatsApp, Twitter/X, Telegram,
+// and clipboard copy fallback for non-HTTPS or older browsers.
+//
+// Stats are pre-formatted strings passed via the `stats` prop from the
+// main component's `shareStats` object so this component stays pure/stateless
+// with respect to data calculation.
 // ---------------------------------------------------------------------------
 function ShareModal({ isOpen, onClose, stats }) {
   const [copied, setCopied] = useState(false);
   const [shareState, setShareState] = useState("idle");
 
-  // Don't render when closed — avoids unnecessary DOM nodes
+  // Don't render when closed — avoids unnecessary DOM nodes and event listeners
   if (!isOpen) return null;
 
   const {
@@ -355,7 +359,7 @@ function ShareModal({ isOpen, onClose, stats }) {
     unlockedBadges,
   } = stats;
 
-  // Pre-built share message used by all share targets
+  // Pre-built share message reused across all share targets
   const shareText = `🌱 My EV Impact on FamilyTrack EV\n\n♻️ CO₂ Saved: ${savedCO2} kg\n🌳 Tree Equivalents: ${treeEquiv}\n📏 Total Distance: ${totalDistance} km\n🚴 Trips Completed: ${totalTrips}\n🌿 Avg Eco Score: ${avgEcoScore}/100\n⭐ Best Score: ${bestEcoScore}/100${unlockedBadges.length > 0 ? `\n🏅 Badges: ${unlockedBadges.map((b) => b.label).join(", ")}` : ""}\n\nRiding green every day! 🔋⚡`;
 
   // Web Share API — available on mobile browsers; not on desktop Chrome
@@ -370,7 +374,7 @@ function ShareModal({ isOpen, onClose, stats }) {
       setShareState("done");
       setTimeout(() => setShareState("idle"), 2000);
     } catch (e) {
-      // AbortError = user cancelled the share sheet — not an actual error
+      // AbortError = user cancelled the share sheet — not a real error
       if (e.name !== "AbortError") setShareState("error");
       else setShareState("idle");
     }
@@ -381,6 +385,7 @@ function ShareModal({ isOpen, onClose, stats }) {
     try {
       await navigator.clipboard.writeText(shareText);
     } catch {
+      // Legacy fallback: create a temp textarea, select it, copy, remove
       const el = document.createElement("textarea");
       el.value = shareText;
       document.body.appendChild(el);
@@ -399,7 +404,7 @@ function ShareModal({ isOpen, onClose, stats }) {
     );
 
   const handleTwitter = () => {
-    // Twitter has a character limit — keep the tweet concise
+    // Twitter has a 280-char limit — keep the tweet concise
     const tweet = `🌱 I've saved ${savedCO2} kg CO₂ riding my EV! That's ${treeEquiv} tree equivalents 🌳 Eco Score: ${avgEcoScore}/100 #EVRiding #GreenCommute #FamilyTrackEV`;
     window.open(
       `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweet)}`,
@@ -413,7 +418,7 @@ function ShareModal({ isOpen, onClose, stats }) {
       "_blank",
     );
 
-  // Inline style helper for platform buttons — keeps JSX DRY
+  // Inline style helper for platform icon buttons — keeps JSX DRY
   const platformBtn = (color) => ({
     display: "flex",
     flexDirection: "column",
@@ -445,7 +450,7 @@ function ShareModal({ isOpen, onClose, stats }) {
       }}
       onClick={onClose}
     >
-      {/* stopPropagation prevents backdrop click from firing inside the card */}
+      {/* stopPropagation prevents backdrop click from closing when clicking inside card */}
       <div
         style={{
           background: "#1e1e1e",
@@ -548,7 +553,7 @@ function ShareModal({ isOpen, onClose, stats }) {
             ))}
           </div>
 
-          {/* Show earned badge chips if any are unlocked */}
+          {/* Show earned badge chips if any badges are currently unlocked */}
           {unlockedBadges.length > 0 && (
             <div
               style={{
@@ -648,12 +653,13 @@ function ShareModal({ isOpen, onClose, stats }) {
 // ---------------------------------------------------------------------------
 // ChallengesTab
 // Renders the weekly challenges panel including:
-//   - Streak tracker with day-of-week visual dots
-//   - 6 challenge cards with progress bars
-//   - This-week summary stats grid
+//   - Streak tracker with day-of-week visual dots (S M T W T F S)
+//   - 6 challenge cards with progress bars or boolean done/not-done states
+//   - This-week summary stats grid (trips, distance, avg score, days ridden)
 //
-// Uses prevCompletedRef to detect newly-completed challenges since last render
-// and triggers the ChallengeCompleteOverlay animation once per completion event.
+// Uses prevCompletedRef to detect newly-completed challenges since the last
+// render and triggers the ChallengeCompleteOverlay animation exactly once
+// per completion event (prevents re-triggering on subsequent renders).
 // ---------------------------------------------------------------------------
 function ChallengesTab({ tripHistory }) {
   const streak = calculateStreak(tripHistory);
@@ -661,11 +667,11 @@ function ChallengesTab({ tripHistory }) {
   const resetDays = daysUntilReset();
 
   // Ref stores the Set of completed challenge IDs from the previous render.
-  // On first render it's null — we initialise it without showing any animation.
+  // Initialised to null so we can skip animation on the very first render.
   const prevCompletedRef = useRef(null);
   const [newlyCompleted, setNewlyCompleted] = useState(null);
 
-  // Enrich each challenge definition with live progress values
+  // Enrich each challenge definition with live progress values for this render
   const challenges = WEEKLY_CHALLENGES.map((c) => {
     const value = c.getValue(wp, streak);
     const completed = value >= c.target;
@@ -675,31 +681,31 @@ function ChallengesTab({ tripHistory }) {
 
   const completedCount = challenges.filter((c) => c.completed).length;
 
-  // Detect newly completed challenges and trigger animation overlay
-  // Re-runs whenever tripHistory changes (which changes wp/streak → challenges)
+  // Detect newly completed challenges and trigger animation overlay.
+  // Runs whenever tripHistory changes (which flows through wp/streak -> challenges).
   useEffect(() => {
     const completedIds = new Set(
       challenges.filter((c) => c.completed).map((c) => c.id),
     );
 
-    // First run — just initialise the ref, no animation
+    // First render — just initialise the ref without showing any animation
     if (prevCompletedRef.current === null) {
       prevCompletedRef.current = completedIds;
       return;
     }
 
-    // Compare against previous — find the first newly completed one
+    // Compare against previous render — find first newly completed challenge
     for (const id of completedIds) {
       if (!prevCompletedRef.current.has(id)) {
         const ch = challenges.find((c) => c.id === id);
         if (ch) setNewlyCompleted(ch);
-        break; // show one overlay at a time
+        break; // show one overlay at a time; next one fires on next render cycle
       }
     }
     prevCompletedRef.current = completedIds;
   }, [tripHistory]);
 
-  // Color of the streak flame — escalates with streak length
+  // Flame color escalates with streak length — visual motivation feedback
   const streakColor =
     streak >= 7
       ? "#FF5722"
@@ -711,7 +717,7 @@ function ChallengesTab({ tripHistory }) {
 
   return (
     <div>
-      {/* Challenge completion overlay — shown for 2.4s on new completion */}
+      {/* Challenge completion overlay — shown for 2.4s on new completion event */}
       {newlyCompleted && (
         <ChallengeCompleteOverlay
           challenge={newlyCompleted}
@@ -735,7 +741,7 @@ function ChallengesTab({ tripHistory }) {
         >
           <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
             <div style={{ textAlign: "center" }}>
-              {/* Flame greyed out when streak = 0 */}
+              {/* Flame is greyscaled when streak = 0 to show inactivity */}
               <div
                 style={{
                   fontSize: "52px",
@@ -766,9 +772,10 @@ function ChallengesTab({ tripHistory }) {
           </div>
 
           {/* Day-of-week dot row — S M T W T F S */}
+          {/* Each dot checks whether any trip was recorded on that calendar date */}
           <div style={{ display: "flex", gap: "8px" }}>
             {[1, 2, 3, 4, 5, 6, 7].map((day) => {
-              // Compute the actual calendar date for this slot in the current week
+              // Compute the actual calendar date for this weekday slot
               const now = new Date();
               const weekStart = new Date(now);
               weekStart.setDate(now.getDate() - now.getDay());
@@ -796,7 +803,8 @@ function ChallengesTab({ tripHistory }) {
                     justifyContent: "center",
                     fontSize: "11px",
                     fontWeight: "700",
-                    // Filled with streak color if a trip was recorded that day
+                    // Filled with streak color if a trip was recorded that day;
+                    // today gets a border ring even if no trip yet
                     background: hasTrip
                       ? streakColor
                       : isToday
@@ -822,7 +830,7 @@ function ChallengesTab({ tripHistory }) {
             Complete a trip today to start your streak!
           </p>
         )}
-        {/* Special banner for 7+ day champions */}
+        {/* Special 7-day champion banner — only shown at milestone */}
         {streak >= 7 && (
           <div
             style={{
@@ -841,7 +849,7 @@ function ChallengesTab({ tripHistory }) {
         )}
       </div>
 
-      {/* ── Weekly reset info + completion counter ─────────────────────── */}
+      {/* ── Weekly reset countdown + completion pill ───────────────────── */}
       <div
         style={{
           display: "flex",
@@ -858,7 +866,7 @@ function ChallengesTab({ tripHistory }) {
             Resets in {resetDays} day{resetDays !== 1 ? "s" : ""}
           </p>
         </div>
-        {/* Pill turns green when all challenges are done */}
+        {/* Completion counter pill — turns green when all challenges are done */}
         <div
           style={{
             padding: "6px 14px",
@@ -891,14 +899,14 @@ function ChallengesTab({ tripHistory }) {
               style={{
                 padding: "16px 20px",
                 marginBottom: 0,
-                // Left border turns colored when completed, grey when pending
+                // Left border turns the challenge color when complete, grey when pending
                 borderLeft: `4px solid ${ch.completed ? ch.color : "#333"}`,
                 opacity: ch.completed ? 1 : 0.9,
                 position: "relative",
                 overflow: "hidden",
               }}
             >
-              {/* Subtle gradient shimmer behind completed cards */}
+              {/* Subtle gradient shimmer behind completed cards for visual polish */}
               {ch.completed && (
                 <div
                   style={{
@@ -918,7 +926,7 @@ function ChallengesTab({ tripHistory }) {
                   position: "relative",
                 }}
               >
-                {/* Challenge icon — replaced with ✅ on completion */}
+                {/* Challenge icon — swapped for ✅ when completed */}
                 <div
                   style={{
                     fontSize: "28px",
@@ -948,7 +956,7 @@ function ChallengesTab({ tripHistory }) {
                     >
                       {ch.title}
                     </span>
-                    {/* Progress label: "X unit / Y unit" or "Done!" / "Not yet" for booleans */}
+                    {/* Progress label: "X unit / Y unit" for numeric; "Done!" / "Not yet" for boolean */}
                     <span
                       style={{
                         fontSize: "13px",
@@ -975,7 +983,7 @@ function ChallengesTab({ tripHistory }) {
                     {ch.desc}
                   </p>
 
-                  {/* Numeric progress bar — hidden for boolean challenges */}
+                  {/* Numeric progress bar — not rendered for boolean challenges */}
                   {!ch.isBool && (
                     <div
                       style={{
@@ -989,7 +997,7 @@ function ChallengesTab({ tripHistory }) {
                         style={{
                           height: "100%",
                           width: `${ch.pct}%`,
-                          // Full color when done; dimmed when in-progress
+                          // Full color when done; dimmed gradient when in-progress
                           background: ch.completed
                             ? `linear-gradient(90deg, ${ch.color}, ${ch.color}cc)`
                             : `linear-gradient(90deg, ${ch.color}88, ${ch.color}44)`,
@@ -1000,7 +1008,7 @@ function ChallengesTab({ tripHistory }) {
                     </div>
                   )}
 
-                  {/* Boolean challenge — empty bar when incomplete */}
+                  {/* Boolean challenge — zero-width bar when incomplete */}
                   {ch.isBool && !ch.completed && (
                     <div
                       style={{
@@ -1020,7 +1028,7 @@ function ChallengesTab({ tripHistory }) {
                     </div>
                   )}
 
-                  {/* Boolean challenge — full bar when complete */}
+                  {/* Boolean challenge — full-width solid bar when complete */}
                   {ch.isBool && ch.completed && (
                     <div
                       style={{
@@ -1046,7 +1054,7 @@ function ChallengesTab({ tripHistory }) {
         </div>
       )}
 
-      {/* ── This week summary stat tiles ─────────────────────────────── */}
+      {/* ── This week summary stat tiles ──────────────────────────────── */}
       {tripHistory.length > 0 && (
         <div className="eco-card" style={{ marginTop: "16px" }}>
           <h2 style={{ margin: "0 0 14px", fontSize: "15px", color: "#fff" }}>
@@ -1108,12 +1116,16 @@ function ChallengesTab({ tripHistory }) {
 // ---------------------------------------------------------------------------
 // EnvironmentalImpactHub — main component
 //
-// Aggregates trip history into cumulative stats, drives badge detection,
-// and renders all four tab views: Overview, Trip Details, Leaderboard, Challenges.
+// Aggregates trip history into cumulative environmental stats, drives badge
+// unlock detection, and renders all four tab views:
+//   Overview      — summary stats + score distribution + recent trips
+//   Trip Details  — paginated trip cards with PDF export
+//   Leaderboard   — ranked by CO2 saved per rider
+//   Challenges    — weekly streak and challenge tracker (ChallengesTab)
 //
 // Props:
 //   tripHistory  — Zustand persisted array; each entry is a completed trip object
-//   currentTrip  — live object during an active trip; null otherwise
+//   currentTrip  — live object during an active trip (null when idle)
 //   allRiders    — unused currently; reserved for family-wide aggregation
 // ---------------------------------------------------------------------------
 const EnvironmentalImpactHub = ({
@@ -1123,26 +1135,28 @@ const EnvironmentalImpactHub = ({
 }) => {
   // Tab state: "overview" | "detailed" | "leaderboard" | "challenges"
   const [viewMode, setViewMode] = useState("overview");
-  const [showBadges, setShowBadges] = useState(false);
+  const [showBadges, setShowBadges] = useState(false); // expand locked badge list
   const [showCoachingTips, setShowCoachingTips] = useState(false);
-  const [selectedTrip, setSelectedTrip] = useState(null); // expanded trip in detailed view
-  const [tripLimit, setTripLimit] = useState(5); // how many trips to show in detailed tab
+  const [selectedTrip, setSelectedTrip] = useState(null); // expanded trip in detailed tab
+  const [tripLimit, setTripLimit] = useState(5); // pagination for trip list
   const [showShareModal, setShowShareModal] = useState(false);
 
-  // Tracks the badge that just unlocked so BadgeUnlockOverlay can be shown
+  // Tracks the badge that just unlocked — drives BadgeUnlockOverlay
   const [newlyUnlocked, setNewlyUnlocked] = useState(null);
-  // Ref holds the Set of already-unlocked badge IDs from the previous render
+  // Ref holds Set of already-unlocked badge IDs from the previous render.
+  // Using a ref (not state) avoids triggering extra re-renders on every comparison.
   const prevUnlockedIdsRef = useRef(null);
 
-  // ── Aggregate stats — computed from full tripHistory ─────────────────────
-  // Dual field name support: store saves distanceKm; older/simulated trips may use distance
+  // ── Aggregate stats — all computed from full tripHistory ─────────────────
+  // Dual field name support throughout: store saves distanceKm/score/durationSeconds
+  // but older and simulated trips may use distance/ecoScore/duration.
+
   const totalDistance = tripHistory.reduce(
     (sum, t) => sum + (t.distanceKm || t.distance || 0),
     0,
   );
   const totalTrips = tripHistory.length;
 
-  // Dual field name: store saves score; some legacy entries use ecoScore
   const avgEcoScore =
     totalTrips > 0
       ? Math.round(
@@ -1158,50 +1172,51 @@ const EnvironmentalImpactHub = ({
       ? Math.max(...tripHistory.map((t) => t.score || t.ecoScore || 0))
       : 0;
 
-  // Dual field: store saves durationSeconds; older trips may use duration
   const totalDuration = tripHistory.reduce(
     (sum, t) => sum + (t.duration || t.durationSeconds || 0),
     0,
   );
   const totalDurationHrs = (totalDuration / 3600).toFixed(1);
 
-  // Environmental impact numbers derived from total distance
+  // Environmental impact — delegates to ecoImpactCalculations.js
+  // CO2 saved = (petrol emissions rate - EV emissions rate) * totalDistance
   const { savedCO2, petrolEquivalent } = calculateCO2Savings(totalDistance);
   const treeEquiv = calculateTreeEquivalents(savedCO2);
 
-  // Badge tier evaluation — returns array of badge objects with unlocked + progress
+  // Badge tier evaluation — returns array with unlocked flag + progress %
   const badges = getEcoBadges(savedCO2);
   const nextBadge = getNextBadgeTarget(savedCO2);
 
   // ── Badge unlock detection ────────────────────────────────────────────────
-  // Runs whenever savedCO2 changes (i.e. after a new trip is added).
-  // Compares current unlocked set against previous; triggers overlay for new ones.
+  // Runs whenever savedCO2 changes (after each new trip is added to history).
+  // Compares current unlocked IDs against previous render's set.
+  // Shows BadgeUnlockOverlay for the first newly unlocked badge found.
   useEffect(() => {
     const currentUnlockedIds = new Set(
       badges.filter((b) => b.unlocked).map((b) => b.id),
     );
 
-    // First render — just capture baseline state without showing any animation
+    // First render — capture baseline without triggering any animation
     if (prevUnlockedIdsRef.current === null) {
       prevUnlockedIdsRef.current = currentUnlockedIds;
       return;
     }
 
-    // Find the first badge that wasn't unlocked before but is now
+    // Find first badge that wasn't unlocked before but is now
     for (const id of currentUnlockedIds) {
       if (!prevUnlockedIdsRef.current.has(id)) {
         const badge = badges.find((b) => b.id === id);
         if (badge) setNewlyUnlocked(badge);
-        break; // show one overlay at a time
+        break; // one overlay at a time
       }
     }
     prevUnlockedIdsRef.current = currentUnlockedIds;
   }, [savedCO2]);
 
   // ── Coaching tips source priority ─────────────────────────────────────────
-  // 1. Use live currentTrip data if a trip is active
-  // 2. Fall back to the most recent completed trip
-  // 3. Return generic starter tips if no trips exist at all
+  // 1. Live currentTrip (active ride) — most relevant real-time tips
+  // 2. Most recent completed trip — post-ride coaching
+  // 3. No trips at all — generic starter tips from getCoachingTips()
   let currentTips = [];
   if (currentTrip) {
     currentTips = getCoachingTips(
@@ -1221,14 +1236,14 @@ const EnvironmentalImpactHub = ({
       last.distanceKm || last.distance || 0,
     );
   } else {
-    currentTips = getCoachingTips(); // returns generic starter tips
+    currentTips = getCoachingTips(); // returns generic "start riding" tips
   }
 
   const unlockedBadges = badges.filter((b) => b.unlocked);
 
-  // ── Leaderboard data — aggregates trips by riderName ─────────────────────
-  // Groups all trips in tripHistory by riderName, summing CO2, trips, scores.
-  // Then sorts by CO2 saved descending and assigns rank numbers.
+  // ── Leaderboard data — groups trips by riderName ──────────────────────────
+  // Builds a map of { name -> { co2, trips, totalScore } }, then converts to
+  // a ranked array sorted by CO2 saved descending.
   const riderMap = {};
   tripHistory.forEach((t) => {
     const name = t.riderName || "Unknown";
@@ -1250,32 +1265,43 @@ const EnvironmentalImpactHub = ({
     .sort((a, b) => b.co2Saved - a.co2Saved)
     .map((r, i) => ({ ...r, rank: i + 1 }));
 
+  // ---------------------------------------------------------------------------
+  // handleExportTrip
+  // FIXED: normalises all field name variants before calling downloadTripPDF.
+  //
+  // The Zustand store saves trips with these field names:
+  //   distanceKm, durationSeconds, score, avgSpeedKmh, batteryUsedPercent
+  //
+  // But downloadTripPDF (tripPDFExport.js) expects:
+  //   distance, duration, ecoScore, avgSpeed, batteryUsed
+  //
+  // Without this normalisation, batteryUsed would be undefined and the PDF
+  // would silently default to 15%, showing the wrong value on the report.
+  // batteryRemaining is passed through as-is since the field name matches.
+  // ---------------------------------------------------------------------------
   const handleExportTrip = (trip) => {
     downloadTripPDF({
-      // Pass all original fields through (riderName, distance, duration, etc.)
+      // Spread all original fields first so nothing is accidentally dropped
       ...trip,
-      // Map distanceKm → distance (PDF generator reads `distance`)
+      // Field name remaps: store name -> PDF generator expected name
       distance: trip.distanceKm || trip.distance || 0,
-      // Map durationSeconds → duration (PDF generator reads `duration`)
       duration: trip.durationSeconds || trip.duration || 0,
-      // Map score → ecoScore (PDF generator reads `ecoScore`)
       ecoScore: trip.score || trip.ecoScore || 0,
-      // Map avgSpeedKmh → avgSpeed (PDF generator reads `avgSpeed`)
       avgSpeed: trip.avgSpeedKmh || trip.avgSpeed || 0,
-      // KEY FIX: map batteryUsedPercent → batteryUsed (PDF generator reads `batteryUsed`)
-      // Without this, batteryUsed is undefined and the PDF defaults to 15%
+      // KEY FIX: map batteryUsedPercent (store) -> batteryUsed (PDF generator)
+      // Without this, batteryUsed is undefined and PDF defaults to 15%
       batteryUsed: trip.batteryUsedPercent ?? trip.batteryUsed ?? 0,
-      // batteryRemaining is already the correct field name — pass through as-is
-      batteryRemaining: trip.batteryRemaining ?? null, // null triggers fallback, not 0
-      battery: trip.battery ?? 100,
+      // batteryRemaining field name matches — pass through; null triggers
+      // the PDF generator's own fallback of (100 - batteryUsed)
+      batteryRemaining: trip.batteryRemaining ?? null,
     });
   };
 
-  // Traffic-light color for eco score values — used throughout the component
+  // Traffic-light color helper — used throughout for eco score display
   const scoreColor = (s) =>
     s >= 80 ? "#4CAF50" : s >= 60 ? "#ffc107" : "#dc3545";
 
-  // Stats object passed to ShareModal — pre-formatted strings
+  // Pre-formatted stats object passed to ShareModal — avoids recalculating inside modal
   const shareStats = {
     savedCO2: savedCO2.toFixed(2),
     treeEquiv: treeEquiv.toFixed(2),
@@ -1297,7 +1323,7 @@ const EnvironmentalImpactHub = ({
         color: "#e0e0e0",
       }}
     >
-      {/* Badge unlock overlay — shown for 2.8s when a new CO2 tier is reached */}
+      {/* Badge unlock overlay — rendered above everything else (z-index 9999) */}
       {newlyUnlocked && (
         <BadgeUnlockOverlay
           badge={newlyUnlocked}
@@ -1305,14 +1331,16 @@ const EnvironmentalImpactHub = ({
         />
       )}
 
-      {/* Share modal — conditionally rendered; receives pre-computed shareStats */}
+      {/* Share modal — receives pre-computed shareStats; modal manages its own open state */}
       <ShareModal
         isOpen={showShareModal}
         onClose={() => setShowShareModal(false)}
         stats={shareStats}
       />
 
-      {/* Global CSS animations injected via <style> — avoids needing a separate CSS file */}
+      {/* Global CSS keyframe animations for badge/challenge overlays.
+          Injected via <style> tag so no separate CSS file is needed.
+          badge-new class: pulsing glow applied to freshly unlocked badge cards. */}
       <style>{`
         @keyframes badgeOverlayIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes badgeBounceIn { from { opacity: 0; transform: scale(0.3); } to { opacity: 1; transform: scale(1); } }
@@ -1359,7 +1387,7 @@ const EnvironmentalImpactHub = ({
       `}</style>
 
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        {/* ── Header card ────────────────────────────────────────────── */}
+        {/* ── Header card ──────────────────────────────────────────────────── */}
         <div
           className="eco-card"
           style={{
@@ -1398,7 +1426,8 @@ const EnvironmentalImpactHub = ({
           </div>
         </div>
 
-        {/* ── Top metrics — 4 impact boxes ─────────────────────────── */}
+        {/* ── Top 4 impact metric boxes ─────────────────────────────────────── */}
+        {/* CO2 saved, tree equivalents, total distance, avg eco score */}
         <div className="eco-card">
           <h2>Your Impact</h2>
           <div className="impact-grid">
@@ -1441,7 +1470,8 @@ const EnvironmentalImpactHub = ({
           </div>
         </div>
 
-        {/* ── Carbon Offset Badges ──────────────────────────────────── */}
+        {/* ── Carbon Offset Badges card ─────────────────────────────────────── */}
+        {/* Shows unlocked badges as gold tiles; "View All" expands locked progress bars */}
         <div className="eco-card">
           <div
             style={{
@@ -1452,7 +1482,6 @@ const EnvironmentalImpactHub = ({
             }}
           >
             <h2 style={{ margin: 0 }}>🏆 Carbon Offset Badges</h2>
-            {/* Toggle to expand locked badge progress list */}
             <button
               className="btn-secondary"
               onClick={() => setShowBadges(!showBadges)}
@@ -1478,7 +1507,8 @@ const EnvironmentalImpactHub = ({
                 {unlockedBadges.map((b) => (
                   <div
                     key={b.id}
-                    // badge-new applies a pulsing glow animation for freshly unlocked badges
+                    // badge-new CSS class applies a pulsing glow ring for 3 cycles
+                    // on the card that was just unlocked this session
                     className={`badge-unlocked ${newlyUnlocked?.id === b.id ? "badge-new" : ""}`}
                   >
                     <div style={{ fontSize: "22px", marginBottom: "4px" }}>
@@ -1505,7 +1535,7 @@ const EnvironmentalImpactHub = ({
             </p>
           )}
 
-          {/* Locked badges with progress bars — shown when "View All" is expanded */}
+          {/* Locked badges with individual progress bars — toggled by "View All" */}
           {showBadges &&
             (() => {
               const lockedBadges = badges.filter((b) => !b.unlocked);
@@ -1531,7 +1561,7 @@ const EnvironmentalImpactHub = ({
                     }}
                   >
                     {lockedBadges.map((b) => {
-                      // Clamp progress between 0–99 so the bar never appears full for locked badges
+                      // Clamp 0-99 so bar never looks 100% for a locked badge
                       const pct = Math.min(99, Math.max(0, b.progress ?? 0));
                       return (
                         <div
@@ -1609,7 +1639,7 @@ const EnvironmentalImpactHub = ({
               );
             })()}
 
-          {/* All badges unlocked — celebration banner */}
+          {/* All-badges-unlocked celebration banner */}
           {nextBadge?.maxReached && (
             <div
               style={{
@@ -1634,8 +1664,8 @@ const EnvironmentalImpactHub = ({
           )}
         </div>
 
-        {/* ── Coaching Tips card ────────────────────────────────────── */}
-        {/* Only rendered when there are tips to show; tips are hidden by default */}
+        {/* ── Coaching Tips card ────────────────────────────────────────────── */}
+        {/* Hidden by default; tips are sourced from currentTrip > last trip > generic */}
         {currentTips.length > 0 && (
           <div className="eco-card">
             <div
@@ -1654,7 +1684,7 @@ const EnvironmentalImpactHub = ({
                 {showCoachingTips ? "Hide Tips" : "Show Tips"}
               </button>
             </div>
-            {/* Show at most 3 tips; border color driven by priority level */}
+            {/* Show at most 3 tips; left border color driven by priority level */}
             {showCoachingTips &&
               currentTips.slice(0, 3).map((tip, i) => (
                 <div
@@ -1702,7 +1732,7 @@ const EnvironmentalImpactHub = ({
           </div>
         )}
 
-        {/* ── Tab navigation ────────────────────────────────────────── */}
+        {/* ── Tab navigation ────────────────────────────────────────────────── */}
         <div className="tabs">
           <button
             className={`tab ${viewMode === "overview" ? "active" : ""}`}
@@ -1733,7 +1763,7 @@ const EnvironmentalImpactHub = ({
           </button>
         </div>
 
-        {/* ── OVERVIEW TAB ──────────────────────────────────────────── */}
+        {/* ── OVERVIEW TAB ──────────────────────────────────────────────────── */}
         {viewMode === "overview" && (
           <div className="eco-card">
             <h2>Riding Summary</h2>
@@ -1799,7 +1829,7 @@ const EnvironmentalImpactHub = ({
                   const poor = tripHistory.filter(
                     (t) => (t.score || t.ecoScore || 0) < 60,
                   ).length;
-                  // Percentage helper — avoids division by zero
+                  // pct helper — avoids division by zero when totalTrips = 0
                   const pct = (n) =>
                     totalTrips > 0 ? Math.round((n / totalTrips) * 100) : 0;
                   return (
@@ -1856,7 +1886,7 @@ const EnvironmentalImpactHub = ({
                   );
                 })()}
 
-                {/* Last 3 trips mini-list — most recent first */}
+                {/* Last 3 trips mini-list — newest first */}
                 <h2 style={{ margin: "20px 0 12px" }}>Recent Trips</h2>
                 {tripHistory
                   .slice(-3)
@@ -1930,14 +1960,14 @@ const EnvironmentalImpactHub = ({
           </div>
         )}
 
-        {/* ── TRIP DETAILS TAB ──────────────────────────────────────── */}
+        {/* ── TRIP DETAILS TAB ──────────────────────────────────────────────── */}
         {viewMode === "detailed" && (
           <div className="eco-card">
             <h2>Trip History</h2>
             {totalTrips === 0 ? (
               <p className="no-data">No trips recorded yet.</p>
             ) : (
-              // Scrollable container — capped at 500px to avoid infinite page growth
+              // Scrollable container capped at 500px to prevent infinite page growth
               <div style={{ maxHeight: "500px", overflowY: "auto" }}>
                 {tripHistory
                   .slice()
@@ -1948,7 +1978,7 @@ const EnvironmentalImpactHub = ({
                     const dist = trip.distanceKm || trip.distance || 0;
                     const dur = trip.duration || trip.durationSeconds || 0;
                     const speed = trip.avgSpeed || trip.avgSpeedKmh || 0;
-                    // batteryUsed display — supports both field name variants
+                    // batteryUsed: support both field name variants
                     const battery =
                       trip.batteryUsed || trip.batteryUsedPercent || 0;
                     const name = trip.riderName || "Rider";
@@ -1987,7 +2017,7 @@ const EnvironmentalImpactHub = ({
                             >
                               {name}
                             </span>
-                            {/* SIM badge for simulated trips */}
+                            {/* SIM badge — distinguishes simulated from real trips */}
                             {trip.isSimulated && (
                               <span
                                 style={{
@@ -2008,7 +2038,7 @@ const EnvironmentalImpactHub = ({
                           </span>
                         </div>
 
-                        {/* Trip metric grid */}
+                        {/* Trip metric tiles grid */}
                         <div className="trip-card-grid">
                           <div className="trip-card-field">
                             <div className="f-label">Distance</div>
@@ -2065,14 +2095,14 @@ const EnvironmentalImpactHub = ({
                             marginTop: "4px",
                           }}
                         >
-                          {/* Export PDF — calls the fixed handleExportTrip with normalised fields */}
+                          {/* Export PDF — calls handleExportTrip which normalises field names */}
                           <button
                             className="btn-small"
                             onClick={() => handleExportTrip(trip)}
                           >
                             📄 Export PDF
                           </button>
-                          {/* Toggle expanded detail row */}
+                          {/* Toggle to expand/collapse the extended detail row */}
                           <button
                             className="btn-small"
                             onClick={() =>
@@ -2095,7 +2125,7 @@ const EnvironmentalImpactHub = ({
                           </button>
                         </div>
 
-                        {/* Expanded detail row — ride style, consumption, battery remaining, tree equiv */}
+                        {/* Expanded detail row — ride style, Wh/km, battery remaining, tree equiv */}
                         {selectedTrip?.timestamp === trip.timestamp && (
                           <div
                             style={{
@@ -2145,7 +2175,7 @@ const EnvironmentalImpactHub = ({
               </div>
             )}
 
-            {/* Pagination controls — only shown when there are more than 5 trips */}
+            {/* Pagination controls — only visible when more than 5 trips exist */}
             {totalTrips > 5 && (
               <div style={{ display: "flex", gap: "10px", marginTop: "14px" }}>
                 {tripLimit < totalTrips && (
@@ -2166,8 +2196,8 @@ const EnvironmentalImpactHub = ({
           </div>
         )}
 
-        {/* ── LEADERBOARD TAB ───────────────────────────────────────── */}
-        {/* Groups trips by riderName and ranks by CO2 saved descending */}
+        {/* ── LEADERBOARD TAB ───────────────────────────────────────────────── */}
+        {/* Groups all trips by riderName; ranks by CO2 saved descending */}
         {viewMode === "leaderboard" && (
           <div className="eco-card">
             <h2>🏅 Eco Leaderboard</h2>
@@ -2191,7 +2221,7 @@ const EnvironmentalImpactHub = ({
                   {leaderboardData.map((entry) => (
                     <tr key={entry.rank}>
                       <td>
-                        {/* Medal emoji for top 3; number for the rest */}
+                        {/* Medal emoji for top 3; # number for the rest */}
                         {entry.rank <= 3 ? (
                           <span className="rank-badge">
                             {["🥇", "🥈", "🥉"][entry.rank - 1]}
@@ -2227,8 +2257,8 @@ const EnvironmentalImpactHub = ({
           </div>
         )}
 
-        {/* ── CHALLENGES TAB ────────────────────────────────────────── */}
-        {/* Delegates to ChallengesTab which manages its own streak/challenge state */}
+        {/* ── CHALLENGES TAB ────────────────────────────────────────────────── */}
+        {/* Delegates fully to ChallengesTab which owns streak/challenge state */}
         {viewMode === "challenges" && (
           <ChallengesTab tripHistory={tripHistory} />
         )}
