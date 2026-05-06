@@ -18,8 +18,9 @@ import {
   getNextBadgeTarget,
   getCoachingTips,
   generateImpactReport,
-  downloadTripPDF,
 } from "../utils/ecoImpactCalculations";
+
+import { downloadTripPDF } from "../utils/tripPDFExport";
 
 // ---------------------------------------------------------------------------
 // calculateStreak
