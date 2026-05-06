@@ -598,7 +598,7 @@ function SOSAlertModal({ sosRider, onResolve, onClose }) {
         lon: raw.lon ?? raw.lng ?? raw.longitude ?? null,
       }
     : null;
-  const hasCoords = loc && validCoords(loc.lat, loc.on);
+  const hasCoords = loc && validCoords(loc.lat, loc.lon);
   const mapsUrl = hasCoords
     ? `https://www.google.com/maps?q=${loc.lat},${loc.lon}`
     : null;
@@ -1039,6 +1039,37 @@ function TripHistoryTable({
 //   rain_tip          → send rain safety tip
 // ─────────────────────────────────────────────────────────────────────────────
 function AlertItem({ alert, onSendReminder }) {
+  const [sentKeys, setSentKeys] = useState(new Set());
+
+  // Guard: ignore if already sent for this tipType in this alert instance
+  const handleSend = (riderId, riderName, tipType) => {
+    const key = `${riderId}_${tipType}`;
+    if (sentKeys.has(key)) return;
+    setSentKeys((prev) => new Set([...prev, key]));
+    onSendReminder(riderId, riderName, tipType);
+  };
+
+  // Helper: check if this tipType has already been sent
+  const isSent = (tipType) => sentKeys.has(`${alert.riderId}_${tipType}`);
+
+  // Helper: returns consistent button style — green "sent" state vs active color
+  const btnStyle = (tipType, color) => ({
+    padding: "4px 10px",
+    background: isSent(tipType) ? "#2a5a2a" : color,
+    border: "none",
+    borderRadius: "4px",
+    cursor: isSent(tipType) ? "not-allowed" : "pointer",
+    fontSize: "12px",
+    fontWeight: "600",
+    color: isSent(tipType)
+      ? "#81c784"
+      : tipType === "low_battery"
+        ? "#1a1a1a"
+        : "white",
+    opacity: isSent(tipType) ? 0.75 : 1,
+    transition: "all 0.2s",
+  });
+
   // Background/border/text color derived from alert severity type
   const bgColor =
     alert.type === "danger"
@@ -1081,20 +1112,12 @@ function AlertItem({ alert, onSendReminder }) {
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
           <button
             onClick={() =>
-              onSendReminder(alert.riderId, alert.riderName, "low_battery")
+              handleSend(alert.riderId, alert.riderName, "low_battery")
             }
-            style={{
-              padding: "4px 10px",
-              background: "#ffc107",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontSize: "12px",
-              fontWeight: "600",
-              color: "#1a1a1a",
-            }}
+            disabled={isSent("low_battery")}
+            style={btnStyle("low_battery", "#ffc107")}
           >
-            💬 Send Charging Reminder
+            {isSent("low_battery") ? "✓ Sent" : "💬 Send Charging Reminder"}
           </button>
           {alert.stationUrl && (
             <a
@@ -1122,20 +1145,12 @@ function AlertItem({ alert, onSendReminder }) {
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
           <button
             onClick={() =>
-              onSendReminder(alert.riderId, alert.riderName, "critical_battery")
+              handleSend(alert.riderId, alert.riderName, "critical_battery")
             }
-            style={{
-              padding: "4px 10px",
-              background: "#dc3545",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontSize: "12px",
-              fontWeight: "600",
-            }}
+            disabled={isSent("critical_battery")}
+            style={btnStyle("critical_battery", "#dc3545")}
           >
-            🚨 Send Critical Alert
+            {isSent("critical_battery") ? "✓ Sent" : "🚨 Send Critical Alert"}
           </button>
           {alert.stationUrl && (
             <a
@@ -1162,43 +1177,23 @@ function AlertItem({ alert, onSendReminder }) {
       {alert.actionType === "drain_warning" && alert.riderId && (
         <button
           onClick={() =>
-            onSendReminder(alert.riderId, alert.riderName, "drain_warning")
+            handleSend(alert.riderId, alert.riderName, "drain_warning")
           }
-          style={{
-            marginTop: "2px",
-            padding: "4px 10px",
-            background: "#fd7e14",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-            fontSize: "12px",
-            fontWeight: "600",
-          }}
+          disabled={isSent("drain_warning")}
+          style={btnStyle("drain_warning", "#fd7e14")}
         >
-          💬 Send Eco Tip
+          {isSent("drain_warning") ? "✓ Sent" : "💬 Send Eco Tip"}
         </button>
       )}
 
       {/* Rain — safety tip */}
       {alert.actionType === "rain_tip" && alert.riderId && (
         <button
-          onClick={() =>
-            onSendReminder(alert.riderId, alert.riderName, "rain_tip")
-          }
-          style={{
-            marginTop: "2px",
-            padding: "4px 10px",
-            background: "#1565c0",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-            fontSize: "12px",
-            fontWeight: "600",
-          }}
+          onClick={() => handleSend(alert.riderId, alert.riderName, "rain_tip")}
+          disabled={isSent("rain_tip")}
+          style={btnStyle("rain_tip", "#1565c0")}
         >
-          🌧️ Send Rain Warning
+          {isSent("rain_tip") ? "✓ Sent" : "🌧️ Send Rain Warning"}
         </button>
       )}
     </div>
@@ -1726,7 +1721,7 @@ export default function WatcherDashboard() {
         if (bat <= BATTERY_CRITICAL && !ba.critical) {
           ba.critical = true;
           addAlert(
-            `🚨 ${riderName} battery CRITICAL (${bat}%)! They need to stop and charge immediately.`,
+            `🚨 ${riderName} battery CRITICAL (${Math.round(bat * 10) / 10}%)! They need to stop and charge immediately.`,
             "danger",
             {
               actionType: "critical_battery",
@@ -1739,7 +1734,7 @@ export default function WatcherDashboard() {
         } else if (bat <= BATTERY_LOW && bat > BATTERY_CRITICAL && !ba.low) {
           ba.low = true;
           addAlert(
-            `🔋 ${riderName} battery is low (${bat}%). Consider sending a charging reminder.`,
+            `🔋 ${riderName} battery is low (${Math.round(bat * 10) / 10}%). Consider sending a charging reminder.`,
             "warning",
             {
               actionType: "charging_reminder",
