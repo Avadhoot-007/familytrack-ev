@@ -1,7 +1,7 @@
 // src/App.jsx — main application entry
 // Provides authentication flows, family setup, and view routing between
 // Rider, Watcher, and Family panels.
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { ref, get, set, push, update } from "firebase/database";
 import { auth, db, googleProvider } from "./config/firebase";
@@ -549,6 +549,8 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
+  const watcherSentTipsRef = useRef({});
+  const watcherMountedRef = useRef(false);
 
   const setGoogleUserStore = useStore((s) => s.setGoogleUser);
   const setGuest = useStore((s) => s.setGuest);
@@ -818,8 +820,13 @@ export default function App() {
         <RiderDashboard riderName={riderName} isActive={view === "rider"} />
       </div>
 
-      {/* ── Watcher — unmount when hidden (map resets are fine) ─────── */}
-      {view === "watcher" && <WatcherDashboard key="watcher-map" />}
+      {/* ── Watcher — mount once on first visit, then hide to preserve dedup state ── */}
+      {(view === "watcher" || watcherMountedRef.current) && (
+        <div style={{ display: view === "watcher" ? "block" : "none" }}>
+          {view === "watcher" && (watcherMountedRef.current = true)}
+          <WatcherDashboard sentTipsRef={watcherSentTipsRef} />
+        </div>
+      )}
 
       {/* ── Family panel ─────────────────────────────────────────────── */}
       {view === "family" && (

@@ -1038,19 +1038,27 @@ function TripHistoryTable({
 //   drain_warning     → send eco throttle tip
 //   rain_tip          → send rain safety tip
 // ─────────────────────────────────────────────────────────────────────────────
-function AlertItem({ alert, onSendReminder }) {
-  const [sentKeys, setSentKeys] = useState(new Set());
+function AlertItem({ alert, onSendReminder, onDismiss, sentTipsRef }) {
+  const [localSent, setLocalSent] = useState(
+    new Set(
+      Object.keys(sentTipsRef.current)
+        .filter((k) => k.startsWith(`${alert.riderId}_`))
+        .map((k) => k.replace(`${alert.riderId}_`, "")),
+    ),
+  );
 
-  // Guard: ignore if already sent for this tipType in this alert instance
   const handleSend = (riderId, riderName, tipType) => {
     const key = `${riderId}_${tipType}`;
-    if (sentKeys.has(key)) return;
-    setSentKeys((prev) => new Set([...prev, key]));
+    if (sentTipsRef.current[key]) return;
+    sentTipsRef.current[key] = true;
+    setLocalSent((prev) => new Set([...prev, tipType]));
     onSendReminder(riderId, riderName, tipType);
   };
 
-  // Helper: check if this tipType has already been sent
-  const isSent = (tipType) => sentKeys.has(`${alert.riderId}_${tipType}`);
+  const isSent = (tipType) => {
+    const key = `${alert.riderId}_${tipType}`;
+    return sentTipsRef.current[key] || localSent.has(tipType);
+  };
 
   // Helper: returns consistent button style — green "sent" state vs active color
   const btnStyle = (tipType, color) => ({
@@ -1103,8 +1111,31 @@ function AlertItem({ alert, onSendReminder }) {
         fontWeight: alert.type === "danger" ? "bold" : "normal",
       }}
     >
-      <div style={{ marginBottom: alert.actionType ? "8px" : 0 }}>
-        {alert.message}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          marginBottom: alert.actionType ? "8px" : 0,
+        }}
+      >
+        <span>{alert.message}</span>
+        <button
+          onClick={() => onDismiss(alert.id)}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#666",
+            cursor: "pointer",
+            fontSize: "14px",
+            lineHeight: 1,
+            marginLeft: "8px",
+            flexShrink: 0,
+          }}
+          title="Dismiss"
+        >
+          ✕
+        </button>
       </div>
 
       {/* Low battery — charging reminder + nearest station link */}
@@ -1456,7 +1487,7 @@ function ReplayOverlay({ replay, onStop, onSpeedChange }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // WatcherDashboard — main component
 // ─────────────────────────────────────────────────────────────────────────────
-export default function WatcherDashboard() {
+export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
   // Pull familyId from Zustand store to scope Firebase geofence reads
   const familyId = useStore((s) => s.familyId);
 
@@ -1508,6 +1539,8 @@ export default function WatcherDashboard() {
   const riderColorMap = useRef({}); // riderId → hex color string
   const previousInsideRef = useRef({}); // riderId → { zoneId: bool } — last known geofence state
   const sosProcessedRef = useRef({}); // riderId → bool — prevents duplicate SOS modals
+  const internalRef = useRef({});
+  const sentTipsRef = externalSentTipsRef ?? internalRef; // riderId_tipType → bool — global sent guard
 
   // Active geofences: use family-specific Firebase zones if available,
   // otherwise fall back to the hardcoded static defaults in data/geofences.js
@@ -2692,6 +2725,31 @@ export default function WatcherDashboard() {
           </div>
 
           {/* Scrollable alert log */}
+          {alerts.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                marginBottom: "6px",
+              }}
+            >
+              <button
+                onClick={() => setAlerts([])}
+                style={{
+                  padding: "4px 10px",
+                  fontSize: "11px",
+                  fontWeight: "600",
+                  background: "transparent",
+                  border: "1px solid #444",
+                  borderRadius: "4px",
+                  color: "#888",
+                  cursor: "pointer",
+                }}
+              >
+                🗑️ Clear All
+              </button>
+            </div>
+          )}
           <div className="watcher-alerts-scroll">
             {!alerts.length && (
               <p style={{ color: "#666", fontSize: "14px" }}>No alerts yet.</p>
@@ -2701,6 +2759,10 @@ export default function WatcherDashboard() {
                 key={alert.id}
                 alert={alert}
                 onSendReminder={handleSendReminder}
+                onDismiss={(id) =>
+                  setAlerts((prev) => prev.filter((a) => a.id !== id))
+                }
+                sentTipsRef={sentTipsRef}
               />
             ))}
           </div>
@@ -2839,7 +2901,13 @@ export default function WatcherDashboard() {
                 <CoachingTipCard
                   ecoScore={selectedTrip.score}
                   tripData={selectedTrip}
-                  riderId={selectedTrip.riderId}
+                  riderId={
+                    selectedTrip.riderName
+                      ? selectedTrip.riderName
+                          .toLowerCase()
+                          .replace(/\s+/g, "-")
+                      : selectedTrip.riderId
+                  }
                   watcherId="parent"
                 />
               </div>

@@ -822,6 +822,24 @@ export default function RiderDashboard({ riderName, isActive = true }) {
     <div className={`rider-dashboard ${batteryTheme}`}>
       {/* Persistent toast stack — bottom-right corner */}
       <div className="toast-stack">
+        {toasts.length > 1 && (
+          <button
+            onClick={() => setToasts([])}
+            style={{
+              alignSelf: "flex-end",
+              padding: "3px 8px",
+              fontSize: "11px",
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid #555",
+              borderRadius: "4px",
+              color: "#aaa",
+              cursor: "pointer",
+              marginBottom: "4px",
+            }}
+          >
+            Clear All
+          </button>
+        )}
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast-${t.type}`}>
             <span>{t.msg}</span>
@@ -1353,10 +1371,35 @@ export default function RiderDashboard({ riderName, isActive = true }) {
 
       {/* Coaching tips floating panel — shown while sharing if tips exist */}
       {isSharing && currentCoachingTips.length > 0 && (
-        <CoachingTipsSystem
-          tips={currentCoachingTips}
-          ecoScore={Math.round(ecoScore)}
-        />
+        <>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              padding: "0 4px 6px",
+            }}
+          >
+            <button
+              onClick={() => setCoachingTips([])}
+              style={{
+                padding: "4px 10px",
+                fontSize: "11px",
+                fontWeight: "600",
+                background: "transparent",
+                border: "1px solid #444",
+                borderRadius: "4px",
+                color: "#888",
+                cursor: "pointer",
+              }}
+            >
+              🗑️ Clear Tips
+            </button>
+          </div>
+          <CoachingTipsSystem
+            tips={currentCoachingTips}
+            ecoScore={Math.round(ecoScore)}
+          />
+        </>
       )}
 
       {/* Rider coaching tips inbox (floating badge + drawer) */}
