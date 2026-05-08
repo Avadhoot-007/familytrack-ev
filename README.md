@@ -1,6 +1,6 @@
 # FamilyTrack EV 🚴‍♂️⚡
 
-A comprehensive family safety and eco-tracking application for electric vehicle (EV) riders. Monitor real-time location, battery levels, and driving efficiency while ensuring safety through geofencing and emergency response features. Built with React 19, Firebase, and OpenStreetMap for seamless real-time family connectivity.
+A comprehensive family safety and eco-tracking application for electric vehicle (EV) riders. Monitor real-time location, battery levels, and driving efficiency while ensuring safety through geofencing, SOS alerts, and intelligent coaching.
 
 ---
 
@@ -24,7 +24,7 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 
 ## Overview
 
-**FamilyTrack EV** is an all-in-one family safety and eco-awareness platform designed specifically for electric vehicle riders. It combines real-time GPS tracking, battery monitoring, eco-score analytics, and family-based safety features into a unified application. Perfect for families wanting to ensure rider safety while promoting environmentally conscious driving habits.
+**FamilyTrack EV** is an all-in-one family safety and eco-awareness platform designed specifically for electric vehicle riders. It combines real-time GPS tracking, battery monitoring, eco-score analysis, and intelligent coaching to maximize both safety and sustainability.
 
 **Use Cases:**
 
@@ -140,6 +140,7 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
   - 🏆 Achievement (milestone celebrations)
 - **Priority system**: Critical alerts shown first, then medium/low
 - **Dismissible alerts**: Riders can close tips that don't apply
+- **Clear functionality**: Quick-clear button to dismiss all coaching tips at once
 - **Sent tips inbox**: Track all coaching tips from watchers with read/unread status
 - **Watcher-sent tips**: Custom tips from family members with priority levels
 
@@ -183,6 +184,11 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Zoom & pan controls**: Full map interactivity
 - **Charging station overlay**: View nearby charging infrastructure
 
+#### **Enhanced Toast & Tips Management**
+
+- **Clear All toasts button**: Quickly dismiss all notifications in the toast stack
+- **Single-click management**: Streamlined notification handling during rides
+
 ---
 
 ### For Watchers 👁️
@@ -225,7 +231,9 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
   - ⚡ Speed alerts (excessive speed warnings)
 - **Alert metadata**: Timestamp, rider name, severity level
 - **Dismissible alerts**: Clear individual alerts after review
+- **Alert deduplication**: Global tracking prevents duplicate tip reminders across component lifecycle
 - **Alert history**: Last 50 alerts stored and viewable
+- **Clear All alerts button**: Quickly dismiss entire alert queue
 - **Alert prioritization**: Critical/high alerts shown first
 
 #### **Emergency SOS Response System**
@@ -239,6 +247,7 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
   - Direct one-click navigation to emergency location
 - **SOS event history**: All past emergencies logged
 - **Multi-rider SOS handling**: Multiple riders can call SOS simultaneously
+- **Fixed coordinate validation**: Proper lat/lon parsing for accurate location mapping
 
 #### **Trip Monitoring & Analysis**
 
@@ -276,6 +285,7 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
   - Riders can view sender and timestamp
   - Watchers can see sent tips in their coaching panel
 - **Multi-watcher support**: Multiple family members can send tips
+- **Alert button state deduplication**: Tracks sent tips globally to prevent duplicate reminders
 
 #### **Environmental Reports & Analytics**
 
@@ -340,6 +350,7 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **All trip data embedded** in generated PDFs
 - **Environmental report included** in exports
 - **Lightweight implementation** reduces bundle size
+- **Battery remaining field support**: Accurate battery state tracking in exports
 
 #### **Dual Role Architecture**
 
@@ -388,6 +399,13 @@ A comprehensive family safety and eco-tracking application for electric vehicle 
 - **Dynamic profile switching**: Automatic based on riding style
 - **Range projections**: Accurate estimations per consumption mode
 - **Drain rate anomaly detection**: 20% above baseline triggers alert
+
+#### **Alert Deduplication System**
+
+- **Global sent tips tracking**: Prevents duplicate reminders across component lifecycle
+- **Per-alert riderId + tipType deduplication**: Ensures each tip sent exactly once
+- **Component-level persistence**: Survives watcher component mount/unmount cycles
+- **Seamless UX**: Users never see "Send" button re-enabled for same alert type
 
 #### **Demo & Testing Features**
 
@@ -557,7 +575,7 @@ src/
 │   ├── FamilyPanel.jsx             # Family member management & invites
 │   ├── GeofenceEditor.jsx          # Interactive geofence creation/editing
 │   ├── RiderLeaderboard.jsx        # Eco-score rankings and statistics
-│   ├── RiderTipsInbox.jsx          # Rider-side tip inbox (read/unread)
+│   ├── RiderTipsInbox.jsx          # Rider-side tip inbox (read/unread/delete)
 │   ├── SOSModal.jsx                # Emergency SOS interface
 │   ├── TripSummaryCard.jsx         # Trip details and PDF export
 │   └── WatcherDashboard.jsx        # Map, alerts, trips, coaching hub
