@@ -33,6 +33,7 @@ import CoachingTipCard from "./CoachingTipCard.jsx";
 import { downloadTripPDF } from "../utils/tripPDFExport";
 import GeofenceEditor from "./GeofenceEditor.jsx";
 import { useStore } from "../store";
+import { normalizeRiderId } from "../services/locationService";
 
 // ── Rider & geofence color palettes ──────────────────────────────────────────
 // Each rider gets a unique color from RIDER_COLORS by their index order.
@@ -2903,9 +2904,7 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
                   tripData={selectedTrip}
                   riderId={
                     selectedTrip.riderName
-                      ? selectedTrip.riderName
-                          .toLowerCase()
-                          .replace(/\s+/g, "-")
+                      ? normalizeRiderId(selectedTrip.riderName)
                       : selectedTrip.riderId
                   }
                   watcherId="parent"
