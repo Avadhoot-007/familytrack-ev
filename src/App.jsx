@@ -8,7 +8,6 @@ import { auth, db, googleProvider } from "./config/firebase";
 import RiderDashboard from "./pages/RiderDashboard";
 import WatcherDashboard from "./pages/WatcherDashboardPage";
 import FamilyPanel from "./components/FamilyPanel";
-import AdminPanel from "./components/AdminPanel";
 import { hydrateTripsFromStorage, useStore } from "./store";
 import { setEcoConstants } from "./utils/ecoScoring";
 import { setImpactConstants } from "./utils/ecoImpactCalculations";
@@ -538,11 +537,6 @@ function AuthScreen({ onGuest, onGoogle, loading, error }) {
 // - Fetch configuration (eco constants) from Firebase
 // - Route between RiderDashboard, WatcherDashboard and FamilyPanel
 export default function App() {
-  // ── Admin route — completely isolated, no auth/store involvement ──────────
-  if (window.location.pathname === "/admin") {
-    return <AdminPanel />;
-  }
-
   const [view, setView] = useState("rider");
   const [authState, setAuthState] = useState("loading");
   const [googleUser, setGoogleUser] = useState(null);
