@@ -668,8 +668,11 @@ function ChallengesTab({ tripHistory }) {
   const wp = getWeeklyProgress(tripHistory);
   const resetDays = daysUntilReset();
 
-  // Ref stores the Set of completed challenge IDs from the previous render.
-  // Initialised to null so we can skip animation on the very first render.
+  // ── prevCompletedRef ──────────────────────────────────────────────────────
+  // Holds the Set of completed challenge IDs from the previous render.
+  // Initialized to null so we can distinguish "first render" from "no challenges
+  // completed". On first render we populate the ref without showing any overlay
+  // (challenges already completed before opening this tab should not animate).
   const prevCompletedRef = useRef(null);
   const [newlyCompleted, setNewlyCompleted] = useState(null);
 
@@ -683,14 +686,21 @@ function ChallengesTab({ tripHistory }) {
 
   const completedCount = challenges.filter((c) => c.completed).length;
 
-  // Detect newly completed challenges and trigger animation overlay.
-  // Runs whenever tripHistory changes (which flows through wp/streak -> challenges).
+  // ── Newly-completed challenge detection ───────────────────────────────────
+  // Runs whenever tripHistory changes (flows through wp/streak → challenges).
+  // Compares current completed IDs against previous render's set.
+  // Shows ChallengeCompleteOverlay for the first newly completed challenge found.
+  //
+  // prevCompletedRef === null means this is the first execution — we just
+  // capture the baseline Set so subsequent renders can diff against it.
+  // This prevents the overlay from firing for challenges that were already
+  // complete when the component first mounted.
   useEffect(() => {
     const completedIds = new Set(
       challenges.filter((c) => c.completed).map((c) => c.id),
     );
 
-    // First render — just initialise the ref without showing any animation
+    // First render — capture baseline without triggering any animation
     if (prevCompletedRef.current === null) {
       prevCompletedRef.current = completedIds;
       return;
@@ -701,7 +711,7 @@ function ChallengesTab({ tripHistory }) {
       if (!prevCompletedRef.current.has(id)) {
         const ch = challenges.find((c) => c.id === id);
         if (ch) setNewlyCompleted(ch);
-        break; // show one overlay at a time; next one fires on next render cycle
+        break; // show one overlay at a time; next fires on the next render cycle
       }
     }
     prevCompletedRef.current = completedIds;
@@ -773,8 +783,10 @@ function ChallengesTab({ tripHistory }) {
             </div>
           </div>
 
-          {/* Day-of-week dot row — S M T W T F S */}
-          {/* Each dot checks whether any trip was recorded on that calendar date */}
+          {/* Day-of-week dot row — S M T W T F S
+              Each dot checks whether any trip was recorded on that calendar date.
+              Dots are filled with streakColor when a trip exists, greyed when not.
+              Today gets a border ring even if no trip recorded yet. */}
           <div style={{ display: "flex", gap: "8px" }}>
             {[1, 2, 3, 4, 5, 6, 7].map((day) => {
               // Compute the actual calendar date for this weekday slot
@@ -805,8 +817,6 @@ function ChallengesTab({ tripHistory }) {
                     justifyContent: "center",
                     fontSize: "11px",
                     fontWeight: "700",
-                    // Filled with streak color if a trip was recorded that day;
-                    // today gets a border ring even if no trip yet
                     background: hasTrip
                       ? streakColor
                       : isToday
@@ -1145,12 +1155,29 @@ const EnvironmentalImpactHub = ({
 
   // Tracks the badge that just unlocked — drives BadgeUnlockOverlay
   const [newlyUnlocked, setNewlyUnlocked] = useState(null);
-  // Ref holds Set of already-unlocked badge IDs from the previous render.
-  // Using a ref (not state) avoids triggering extra re-renders on every comparison.
-  const prevUnlockedIdsRef = useRef(null);
+
+  // ── prevUnlockedIdsRef ────────────────────────────────────────────────────
+  // Holds the Set of already-unlocked badge IDs from the previous effect run.
+  // Using a ref (not state) avoids triggering extra re-renders on comparison.
+  // The effect then always diffs against a valid baseline Set, even in StrictMode.
+  const initialUnlockedIds = useRef(null);
+  if (initialUnlockedIds.current === null) {
+    // Compute initial baseline synchronously on first render only.
+    // Subsequent renders skip this block because the ref is already set.
+    const { savedCO2: initCO2 } = calculateCO2Savings(
+      tripHistory.reduce((s, t) => s + (t.distanceKm || t.distance || 0), 0),
+    );
+    initialUnlockedIds.current = new Set(
+      getEcoBadges(initCO2)
+        .filter((b) => b.unlocked)
+        .map((b) => b.id),
+    );
+  }
+  // prevUnlockedIdsRef now points to the stable baseline ref
+  const prevUnlockedIdsRef = initialUnlockedIds;
 
   // ── Aggregate stats — all computed from full tripHistory ─────────────────
-  // Dual field name support throughout: store saves distanceKm/score/durationSeconds
+  // Dual field name support: store saves distanceKm/score/durationSeconds
   // but older and simulated trips may use distance/ecoScore/duration.
 
   const totalDistance = tripHistory.reduce(
@@ -1191,27 +1218,26 @@ const EnvironmentalImpactHub = ({
 
   // ── Badge unlock detection ────────────────────────────────────────────────
   // Runs whenever savedCO2 changes (after each new trip is added to history).
-  // Compares current unlocked IDs against previous render's set.
+  // Diffs current unlocked badge IDs against prevUnlockedIdsRef baseline.
   // Shows BadgeUnlockOverlay for the first newly unlocked badge found.
+  //
+  // The baseline ref is initialized before first render (see above), so this
+  // effect never sees a stale or null baseline — safe under StrictMode.
   useEffect(() => {
     const currentUnlockedIds = new Set(
       badges.filter((b) => b.unlocked).map((b) => b.id),
     );
 
-    // First render — capture baseline without triggering any animation
-    if (prevUnlockedIdsRef.current === null) {
-      prevUnlockedIdsRef.current = currentUnlockedIds;
-      return;
-    }
-
-    // Find first badge that wasn't unlocked before but is now
+    // Find first badge that wasn't in the baseline but is now unlocked
     for (const id of currentUnlockedIds) {
       if (!prevUnlockedIdsRef.current.has(id)) {
         const badge = badges.find((b) => b.id === id);
         if (badge) setNewlyUnlocked(badge);
-        break; // one overlay at a time
+        break; // show one overlay at a time; next fires on the next render cycle
       }
     }
+
+    // Advance baseline so future renders diff against the current unlock state
     prevUnlockedIdsRef.current = currentUnlockedIds;
   }, [savedCO2]);
 
@@ -1270,7 +1296,7 @@ const EnvironmentalImpactHub = ({
 
   // ---------------------------------------------------------------------------
   // handleExportTrip
-  // FIXED: normalises all field name variants before calling downloadTripPDF.
+  // Normalises all field name variants before calling downloadTripPDF.
   //
   // The Zustand store saves trips with these field names:
   //   distanceKm, durationSeconds, score, avgSpeedKmh, batteryUsedPercent
@@ -1291,8 +1317,8 @@ const EnvironmentalImpactHub = ({
       duration: trip.durationSeconds || trip.duration || 0,
       ecoScore: trip.score || trip.ecoScore || 0,
       avgSpeed: trip.avgSpeedKmh || trip.avgSpeed || 0,
-      // KEY FIX: map batteryUsedPercent (store) -> batteryUsed (PDF generator)
-      // Without this, batteryUsed is undefined and PDF defaults to 15%
+      // Map batteryUsedPercent (store) -> batteryUsed (PDF generator).
+      // Without this, batteryUsed is undefined and PDF defaults to 15%.
       batteryUsed: trip.batteryUsedPercent ?? trip.batteryUsed ?? 0,
       // batteryRemaining field name matches — pass through; null triggers
       // the PDF generator's own fallback of (100 - batteryUsed)

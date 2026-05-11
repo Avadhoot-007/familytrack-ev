@@ -34,26 +34,27 @@ export default function RiderLeaderboard() {
   const medals = ["🥇", "🥈", "🥉"];
 
   // Pull local trip history and riderName from Zustand.
-  // These are used to merge any locally-held trips that Firebase may not have yet.
+  // Both are used to merge locally-held trips that Firebase may not have yet.
+  // localRiderName is the fallback display name when a trip has no riderName field.
   const localTripHistory = useStore((s) => s.tripHistory);
   const localRiderName = useStore((s) => s.riderName);
 
   // ── Auto-refresh ────────────────────────────────────────────────────────
-  // Re-runs whenever localTripHistory changes (new trip added) OR every 10 s.
-  // The dependency on localTripHistory ensures the leaderboard updates
-  // immediately after a simulated or real trip completes, without waiting
-  // for the next interval tick.
+  // Dependency array includes BOTH localTripHistory AND localRiderName.
+  // Including localRiderName here ensures loadLeaderboardData re-runs and
+  // re-groups local trips under the correct current name whenever it changes.
   useEffect(() => {
     loadLeaderboardData();
     const interval = setInterval(loadLeaderboardData, 10000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localTripHistory]);
+  }, [localTripHistory, localRiderName]);
 
   // ── normalizeId ──────────────────────────────────────────────────────────
   // Converts any rider name or Firebase key into a stable, lowercase,
   // hyphenated identifier with no special characters.
-
+  // Must match the output of sanitizeRiderId() in locationService.js so that
+  // Firebase keys and Zustand-derived IDs collapse to the same map key.
   const normalizeId = (str) =>
     (str || "")
       .trim()
@@ -72,7 +73,7 @@ export default function RiderLeaderboard() {
   //   tripsList    — array of trip objects for this rider
   //
   // Merge strategy:
-  //   If the rider already exists in the map (could happen when Firebase and
+  //   If the rider already exists in the map (can happen when Firebase and
   //   Zustand both have data for them), the entry with MORE trips wins.
   //   More trips = more complete data = more accurate averages.
   //   We do NOT sum both sources because that would double-count trips that
@@ -91,7 +92,7 @@ export default function RiderLeaderboard() {
     );
 
     // Average eco score across all trips.
-    // Again supports both field names: score (new) and ecoScore (legacy).
+    // Supports both field names: score (new) and ecoScore (legacy).
     const avgScore = Math.round(
       tripsList.reduce((sum, t) => sum + (t.score || t.ecoScore || 0), 0) /
         totalTrips,
@@ -133,6 +134,9 @@ export default function RiderLeaderboard() {
   // ── loadLeaderboardData ──────────────────────────────────────────────────
   // Main data-loading function. Reads Firebase, reads Zustand, merges both
   // into a single de-duplicated riderMap, then sets component state.
+  //
+  // Called on mount, every 10 s via setInterval, and immediately whenever
+  // localTripHistory or localRiderName changes (see useEffect above).
   const loadLeaderboardData = async () => {
     try {
       setLoading(true);
@@ -152,12 +156,12 @@ export default function RiderLeaderboard() {
         const ridersData = snapshot.val();
 
         for (const [riderId, riderData] of Object.entries(ridersData)) {
-          // Extract trips; Firebase stores them as an object so we convert to array
+          // Firebase stores trips as an object keyed by tripId; convert to array
           const trips = riderData.trips ? Object.values(riderData.trips) : [];
           if (!trips.length) continue;
 
           // Resolve the best available display name for this rider.
-          // Priority: profile.name > riderName field on any trip > location.name > raw Firebase key
+          // Priority: profile.name > riderName on any trip > location.name > raw key.
           // profile.name is written by RiderDashboard.handleStopSharing() as:
           //   set(ref(db, `riders/${riderId}/profile`), { name: riderName })
           const displayName =
@@ -166,35 +170,31 @@ export default function RiderLeaderboard() {
             riderData.location?.name ||
             riderId;
 
-          // CRITICAL: normalize the Firebase key before using as map key.
+          // Normalize the Firebase key before using it as a map key.
           // Firebase keys are already slugified by sanitizeRiderId() in
-          // locationService.js, but we normalize again here for safety
-          // in case any legacy data used a different format.
+          // locationService.js, but we normalize again here for safety.
           const normalizedId = normalizeId(riderId);
           buildRiderMap(riderMap, normalizedId, displayName, trips);
         }
       }
 
       // ── Source 2: Zustand local trip history ───────────────────────────
-      // Zustand holds trips that may not be in Firebase yet (e.g. the trip
-      // was just completed and the Firebase write is in-flight, or the user
-      // is offline). We merge these in so the leaderboard reflects the
-      // latest local state immediately.
+      // Zustand holds trips that may not be in Firebase yet (e.g. trip just
+      // completed and Firebase write is in-flight, or the user is offline).
+      // Merge these in so the leaderboard reflects the latest local state.
       if (localTripHistory.length > 0) {
-        // Derive the current user's normalized ID the same way RiderDashboard
-        // does: riderName?.toLowerCase().replace(/\s+/g, '-')
-        // We use normalizeId() here which also strips special chars —
-        // this matches what sanitizeRiderId() produces for the Firebase key.
+        // Derive the current user's normalized ID from localRiderName.
+        // Uses the same normalizeId() so it matches the Firebase key format.
         const localRiderId = normalizeId(localRiderName || "local-rider");
         const displayName = localRiderName || localRiderId;
 
         // Group local trips by their per-trip riderId field (normalized).
-        // Most trips will have riderId = localRiderId, but if multiple riders
-        // have used the same device, trips may carry different riderIds.
+        // Most trips carry the current user's riderId, but a single device
+        // shared by multiple family members may have trips from different riders.
         const localByRider = {};
         localTripHistory.forEach((t) => {
-          // t.riderId may be undefined for very old trips; fall back to the
-          // current user's ID derived from riderName.
+          // t.riderId may be undefined for very old trips — fall back to
+          // the current user's ID derived from localRiderName.
           const rawId = t.riderId || localRiderName || "local-rider";
           const id = normalizeId(rawId); // normalize to prevent key mismatches
           const name = t.riderName || displayName;
@@ -204,16 +204,16 @@ export default function RiderLeaderboard() {
         });
 
         // Merge each local rider group into riderMap.
+        // buildRiderMap's "more trips wins" logic handles both cases:
+        //   - Rider not in Firebase → adds from local
+        //   - Rider exists in both  → whichever has more trips wins
+        // This guards against double-counting trips present in both sources.
         for (const [id, { name, trips }] of Object.entries(localByRider)) {
-          // buildRiderMap's internal "more trips wins" logic handles both cases:
-          //   - Rider not in Firebase at all → adds from local
-          //   - Rider exists in both → whichever has more trips wins
-          // This guards against double-counting trips that exist in both sources.
           buildRiderMap(riderMap, id, name, trips);
         }
       }
 
-      // Convert map → array for React state. Sorting happens in getSortedRiders().
+      // Convert map → array for React state; sorting happens in getSortedRiders()
       setRiders(Object.values(riderMap));
       setError(null);
     } catch (err) {
@@ -226,7 +226,7 @@ export default function RiderLeaderboard() {
 
   // ── getSortedRiders ──────────────────────────────────────────────────────
   // Returns a sorted copy of the riders array based on the current sortBy value.
-  // Always sorts descending (highest value first).
+  // Always sorts descending (highest value first) so rank 1 = best performer.
   const getSortedRiders = () => {
     const sorted = [...riders];
     switch (sortBy) {
@@ -245,10 +245,10 @@ export default function RiderLeaderboard() {
   // Maps eco score ranges to traffic-light colours consistent with the
   // rest of the app (RiderDashboard, EnvironmentalImpactHub, WatcherDashboard).
   const getScoreColor = (score) => {
-    if (score >= 90) return "#1a7e32"; // dark green  — Eco Champion
-    if (score >= 70) return "#28a745"; // green       — Good Riding
-    if (score >= 50) return "#ffc107"; // amber       — Room to Improve
-    return "#dc3545"; // red         — Aggressive
+    if (score >= 90) return "#1a7e32"; // dark green — Eco Champion
+    if (score >= 70) return "#28a745"; // green      — Good Riding
+    if (score >= 50) return "#ffc107"; // amber      — Room to Improve
+    return "#dc3545"; // red        — Aggressive
   };
 
   const getScoreLabel = (score) => {
@@ -260,7 +260,7 @@ export default function RiderLeaderboard() {
 
   // ── formatTime ───────────────────────────────────────────────────────────
   // Converts a Unix timestamp (ms) to a human-readable relative string.
-  // Used for the "Last Trip" column.
+  // Used for the "Last Trip" column. Shows days → hours → "just now".
   const formatTime = (timestamp) => {
     const date = new Date(timestamp);
     if (isNaN(date.getTime())) return "Invalid time";
@@ -279,8 +279,8 @@ export default function RiderLeaderboard() {
     <div className="rider-leaderboard">
       <div className="leaderboard-header">
         <h2>🏆 Rider Leaderboard</h2>
-        {/* Sort selector — triggers re-sort on the already-loaded data,
-            no Firebase re-fetch needed */}
+        {/* Sort selector — triggers re-sort on already-loaded data,
+            no Firebase re-fetch needed since riders state is already populated */}
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value)}
@@ -304,7 +304,8 @@ export default function RiderLeaderboard() {
         <>
           {/* ── Leaderboard table ──────────────────────────────────────── */}
           <div className="leaderboard-table">
-            {/* Header row — not a <thead> because the whole table is CSS Grid */}
+            {/* Header row — uses CSS Grid (defined in RiderLeaderboard.css),
+                not a real <thead>, so column widths are shared with data rows */}
             <div className="leaderboard-row header-row">
               <div className="col rank">Rank</div>
               <div className="col name">Rider</div>
@@ -314,15 +315,16 @@ export default function RiderLeaderboard() {
               <div className="col last-trip">Last Trip</div>
             </div>
 
-            {/* One row per rider. Key uses normalizedId (stable, unique).
-                rank-0/1/2 CSS classes apply gold/silver/bronze row tinting. */}
+            {/* One row per rider. Key uses normalizedId (stable, unique across
+                both Firebase and Zustand sources). rank-0/1/2 CSS classes apply
+                gold/silver/bronze row background tinting. */}
             {sortedRiders.map((rider, index) => (
               <div
                 key={rider.normalizedId}
                 className={`leaderboard-row rank-${index}`}
               >
                 <div className="col rank">
-                  {/* Medal emoji for top 3 only; rank number always shown */}
+                  {/* Medal emoji for top 3 only; numeric rank always shown */}
                   {index < 3 && <span className="medal">{medals[index]}</span>}
                   <span className="rank-number">#{index + 1}</span>
                 </div>
@@ -349,7 +351,10 @@ export default function RiderLeaderboard() {
           </div>
 
           {/* ── Summary stats strip ────────────────────────────────────── */}
-          {/* Aggregate totals across ALL riders — gives a quick family overview */}
+          {/* Aggregate totals across ALL riders — gives a quick family overview.
+              avgScore here is the mean of per-rider averages (not per-trip),
+              so every rider has equal weight in the family score regardless
+              of how many trips each rider has completed. */}
           <div className="leaderboard-stats">
             <div className="stat">
               <span className="stat-label">Total Riders</span>
@@ -373,9 +378,6 @@ export default function RiderLeaderboard() {
             <div className="stat">
               <span className="stat-label">Avg Eco Score</span>
               <span className="stat-value">
-                {/* Mean of all riders' average scores — one value per rider,
-                    not per trip, so every rider has equal weight regardless
-                    of how many trips each rider has completed */}
                 {Math.round(
                   sortedRiders.reduce((sum, r) => sum + r.avgScore, 0) /
                     sortedRiders.length,
