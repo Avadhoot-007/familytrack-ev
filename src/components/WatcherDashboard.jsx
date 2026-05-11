@@ -1972,7 +1972,7 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
         // End of route reached — clean up
         if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
         replayIntervalRef.current = null;
-        return { ...prev, active: false };
+        return { ...prev, active: false, visibleRoute: [] };
       }
       return {
         ...prev,
