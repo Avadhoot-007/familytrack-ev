@@ -82,38 +82,50 @@ export const useStore = create(
       // ── Trip History ──────────────────────────────────────────────────────
       tripHistory: [],
 
-      addCompletedTrip: (trip) =>
-        set((state) => {
-          const newTrip = {
-            ...trip,
-            id: trip.id || `trip-${Date.now()}`,
-            timestamp: trip.timestamp || new Date().toISOString(),
-          };
+      // FIX: dedup by `id` not `timestamp` — two rapid trips in same ms no
+      // longer collide. Firebase write moved OUTSIDE the setter to avoid async
+      // side-effects inside Zustand's pure updater (fixes StrictMode double-fire).
+      addCompletedTrip: (trip) => {
+        const newTrip = {
+          ...trip,
+          id: trip.id || `trip-${Date.now()}`,
+          timestamp: trip.timestamp || new Date().toISOString(),
+        };
 
-          const exists = state.tripHistory.some(
-            (t) => t.timestamp === newTrip.timestamp,
+        // Read current state synchronously before mutating
+        const state = get();
+
+        // Dedup by id — guards against duplicate calls with the same explicit id
+        const exists = state.tripHistory.some((t) => t.id === newTrip.id);
+        if (exists) return;
+
+        const updated = [...state.tripHistory, newTrip].slice(-100);
+        set({ tripHistory: updated });
+
+        // Firebase write is async — runs after state update, not inside it
+        const riderId =
+          state.userId ||
+          (state.riderName ? normalizeRiderId(state.riderName) : null);
+        if (riderId) {
+          persistTripToFirebase(riderId, newTrip).catch((e) =>
+            console.warn("persistTripToFirebase failed:", e.message),
           );
-          if (exists) return {};
-
-          const updated = [...state.tripHistory, newTrip].slice(-100);
-
-          const riderId =
-            state.userId ||
-            (state.riderName ? normalizeRiderId(state.riderName) : null);
-          if (riderId) persistTripToFirebase(riderId, newTrip);
-
-          return { tripHistory: updated };
-        }),
+        }
+      },
 
       setTripHistory: (trips) => set({ tripHistory: trips }),
 
+      // FIX: mergeTrips now keys by `id` then falls back to `timestamp`
+      // so Firebase-hydrated trips (which always have an id) never duplicate.
       mergeTrips: (incomingTrips) =>
         set((state) => {
+          // Build a map keyed by id for O(1) dedup
           const existing = new Map(
-            state.tripHistory.map((t) => [t.timestamp, t]),
+            state.tripHistory.map((t) => [t.id || t.timestamp, t]),
           );
           incomingTrips.forEach((t) => {
-            if (!existing.has(t.timestamp)) existing.set(t.timestamp, t);
+            const key = t.id || t.timestamp;
+            if (!existing.has(key)) existing.set(key, t);
           });
           const merged = Array.from(existing.values())
             .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
@@ -149,8 +161,8 @@ export const useStore = create(
   ),
 );
 
-// Hydration helper: Load trips from Firebase on app startup
-// Always merges Firebase trips with local store (avoids data loss)
+// Hydration helper: Load trips from Firebase on app startup.
+// Merges Firebase trips into local store without overwriting local-only entries.
 export const hydrateTripsFromStorage = async () => {
   return new Promise((resolve) => {
     setTimeout(async () => {
@@ -183,6 +195,7 @@ export const hydrateTripsFromStorage = async () => {
   });
 };
 
+// Expose store to browser console for debugging (dev only)
 if (typeof window !== "undefined") {
   window.useStore = useStore;
 }

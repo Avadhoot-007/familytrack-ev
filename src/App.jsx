@@ -13,8 +13,8 @@ import { hydrateTripsFromStorage, useStore } from "./store";
 import { setEcoConstants } from "./utils/ecoScoring";
 import { setImpactConstants } from "./utils/ecoImpactCalculations";
 
-// generate a short 6-character invite code for family joins
-// Uses base36 random string, trimmed and uppercased for readability
+// Generate a short 6-character invite code for family joins.
+// Uses base36 random string, trimmed and uppercased for readability.
 const makeInviteCode = () =>
   Math.random().toString(36).substring(2, 8).toUpperCase();
 
@@ -549,9 +549,8 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
-  const watcherSentTipsRef = useRef({});
   const watcherMountedRef = useRef(false);
-
+  const watcherSentTipsRef = useRef({});
   const setGoogleUserStore = useStore((s) => s.setGoogleUser);
   const setGuest = useStore((s) => s.setGuest);
   const clearAuth = useStore((s) => s.clearAuth);
@@ -578,6 +577,14 @@ export default function App() {
       })
       .catch((e) => console.warn("ecoConstants fetch failed:", e));
   }, []);
+
+  // FIX: Mark watcher as mounted in a useEffect, not inline in JSX.
+  // This runs after render, safely outside the render path.
+  useEffect(() => {
+    if (view === "watcher") {
+      watcherMountedRef.current = true;
+    }
+  }, [view]);
 
   // ── Auth state listener ──────────────────────────────────────────────────
   useEffect(() => {
@@ -667,6 +674,7 @@ export default function App() {
     } finally {
       clearAuth();
       setGoogleUser(null);
+      watcherMountedRef.current = false;
       setAuthState("unauthenticated");
     }
   };
@@ -815,20 +823,28 @@ export default function App() {
         </div>
       </div>
 
-      {/* ── RiderDashboard — always mounted to preserve GPS/trip state ── */}
+      {/* RiderDashboard — always mounted to preserve GPS/trip state */}
       <div style={{ display: view === "rider" ? "block" : "none" }}>
         <RiderDashboard riderName={riderName} isActive={view === "rider"} />
       </div>
 
-      {/* ── Watcher — mount once on first visit, then hide to preserve dedup state ── */}
-      {(view === "watcher" || watcherMountedRef.current) && (
+      {/* WatcherDashboard — mounted once on first visit, then kept in DOM
+          hidden behind display:none to preserve Firebase listeners and
+          sentTipsRef dedup state across tab switches.
+          FIX: watcherMountedRef.current is set via useEffect (not JSX inline). */}
+      {watcherMountedRef.current && (
         <div style={{ display: view === "watcher" ? "block" : "none" }}>
-          {view === "watcher" && (watcherMountedRef.current = true)}
           <WatcherDashboard sentTipsRef={watcherSentTipsRef} />
         </div>
       )}
 
-      {/* ── Family panel ─────────────────────────────────────────────── */}
+      {/* Watcher first-mount trigger — renders the component when tab is first opened.
+          Subsequent renders use the watcherMountedRef guard above to keep it alive. */}
+      {view === "watcher" && !watcherMountedRef.current && (
+        <WatcherDashboard sentTipsRef={watcherSentTipsRef} />
+      )}
+
+      {/* Family panel — unmounts when not active (no persistent state needed) */}
       {view === "family" && (
         <FamilyPanel
           familyId={storeFamilyId}
@@ -842,8 +858,9 @@ export default function App() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-// tabStyle: small helper to return consistent tab button styles
-// active: whether the tab is selected; activeColor: color when active
+// tabStyle: returns consistent tab button inline styles.
+// active: whether this tab is currently selected
+// activeColor: highlight color when active
 function tabStyle(active, activeColor) {
   return {
     padding: "7px 14px",
