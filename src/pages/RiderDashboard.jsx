@@ -12,7 +12,10 @@ import {
   calculateTripStats,
   getEcoScoreColor,
 } from "../utils/ecoScoring";
-import { calculateDistance } from "../services/locationService";
+import {
+  calculateDistance,
+  normalizeRiderId,
+} from "../services/locationService";
 import {
   fetchChargingStations,
   buildMapsUrl,
@@ -106,8 +109,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
   }, [battery]);
 
   // Derive a Firebase-safe rider ID from the display name
-  const riderId = riderName?.toLowerCase().replace(/\s+/g, "-") || "rider-1";
-
+  const riderId = riderName ? normalizeRiderId(riderName) : "rider-1";
   // ── Toast helpers ─────────────────────────────────────────────────────────
   // addToast: push a transient notification; auto-removes after durationMs
   // pass durationMs=0 for a persistent toast (must be manually closed)

@@ -3,6 +3,7 @@
 // Manages: auth, location, trip history, battery, alerts, coaching tips
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { normalizeRiderId } from "../services/locationService";
 import {
   persistTripToFirebase,
   loadTripsFromFirebase,
@@ -98,8 +99,7 @@ export const useStore = create(
 
           const riderId =
             state.userId ||
-            state.riderName?.toLowerCase().replace(/\s+/g, "-") ||
-            null;
+            (state.riderName ? normalizeRiderId(state.riderName) : null);
           if (riderId) persistTripToFirebase(riderId, newTrip);
 
           return { tripHistory: updated };
@@ -158,8 +158,7 @@ export const hydrateTripsFromStorage = async () => {
 
       const riderId =
         state.userId ||
-        state.riderName?.toLowerCase().replace(/\s+/g, "-") ||
-        null;
+        (state.riderName ? normalizeRiderId(state.riderName) : null);
 
       if (riderId) {
         try {

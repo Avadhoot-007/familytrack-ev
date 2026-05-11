@@ -19,6 +19,7 @@ import {
   getCoachingTips,
   generateImpactReport,
 } from "../utils/ecoImpactCalculations";
+import { normalizeRiderId } from "../services/locationService";
 
 import { downloadTripPDF } from "../utils/tripPDFExport";
 
@@ -1248,12 +1249,13 @@ const EnvironmentalImpactHub = ({
   const riderMap = {};
   tripHistory.forEach((t) => {
     const name = t.riderName || "Unknown";
-    if (!riderMap[name])
-      riderMap[name] = { name, co2: 0, trips: 0, totalScore: 0 };
+    const key = normalizeRiderId(name); // stable dedup key
+    if (!riderMap[key])
+      riderMap[key] = { name, co2: 0, trips: 0, totalScore: 0 };
     const dist = t.distanceKm || t.distance || 0;
-    riderMap[name].co2 += calculateCO2Savings(dist).savedCO2;
-    riderMap[name].trips += 1;
-    riderMap[name].totalScore += t.score || t.ecoScore || 0;
+    riderMap[key].co2 += calculateCO2Savings(dist).savedCO2;
+    riderMap[key].trips += 1;
+    riderMap[key].totalScore += t.score || t.ecoScore || 0;
   });
   const leaderboardData = Object.values(riderMap)
     .map((r) => ({
