@@ -1,8 +1,18 @@
 {
   "rules": {
     "riders": {
-      ".read": true,
-      ".write": true
+      "$riderId": {
+        ".read": true,
+        ".write": true,
+        "trips": {
+          ".read": true,
+          ".write": true
+        },
+        "coachingTips": {
+          ".read": true,
+          ".write": true
+        }
+      }
     },
     "families": {
       "$familyId": {
