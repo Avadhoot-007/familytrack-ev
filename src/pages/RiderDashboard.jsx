@@ -8,6 +8,7 @@ import { ref, set } from "firebase/database";
 import { db } from "../config/firebase";
 import {
   generateSensorReading,
+  resetSensorState,
   calculateEcoScore,
   calculateTripStats,
   getEcoScoreColor,
@@ -368,6 +369,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
   // Resets all trip state and dedup flags; called by handleStartSharing and
   // the "Ride Anyway" button in the critical battery modal.
   const _doStartSharing = () => {
+    resetSensorState();
     setIsSharing(true);
     setTripStarted(true);
     setEcoScore(0);
@@ -382,9 +384,9 @@ export default function RiderDashboard({ riderName, isActive = true }) {
     lowToastShownRef.current = false;
     criticalToastShownRef.current = false;
     // Mark modal as shown so it doesn't re-fire immediately after starting
-    criticalModalShownForBatteryRef.current = true;
+    criticalModalShownForBatteryRef.current = false;
     stationsFetchedRef.current = false;
-    startBatteryRef.current = battery;
+    startBatteryRef.current = batteryRef.current;
     tripStartTimeRef.current = Date.now();
     lastLocationRef.current = null;
     // Clear any stale route from previous trip
@@ -649,6 +651,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
 
       // Write rider profile metadata to Firebase (not the trip itself)
       await set(ref(db, `riders/${riderId}/profile`), { name: riderName });
+      set(ref(db, `riders/${riderId}/currentRoute`), null).catch(() => {});
 
       // Update displayed battery to reflect simulated drain
       setBattery(newBattery);
