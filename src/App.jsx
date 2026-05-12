@@ -539,7 +539,7 @@ function AuthScreen({ onGuest, onGoogle, loading, error }) {
 export default function App() {
   const [view, setView] = useState("rider");
   const [authState, setAuthState] = useState("loading");
-  const [googleUser, setGoogleUser] = useState(null);
+  const [googleUser, setLocalGoogleUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
@@ -598,7 +598,7 @@ export default function App() {
         return;
       }
 
-      setGoogleUser(user);
+      setLocalGoogleUser(user);
       try {
         const userSnap = await get(ref(db, `users/${user.uid}`));
         if (userSnap.exists()) {
@@ -667,7 +667,7 @@ export default function App() {
       console.error("Sign out error:", e);
     } finally {
       clearAuth();
-      setGoogleUser(null);
+      setLocalGoogleUser(null);
       watcherMountedRef.current = false;
       setAuthState("unauthenticated");
     }
