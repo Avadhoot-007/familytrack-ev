@@ -159,8 +159,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
       }
       if (location) fetchNearbyStations(location.latitude, location.longitude);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [battery, isSharing]);
+  }, [battery, isSharing, location, fetchNearbyStations]);
 
   // ── Charging station fetch ────────────────────────────────────────────────
   // _doFetchStations: actual Overpass query; sets stations/loading/error state
@@ -308,9 +307,12 @@ export default function RiderDashboard({ riderName, isActive = true }) {
         // Accumulate route points; batch-write to Firebase every 5 updates
         const newPoint = [latitude, longitude];
         routePointsRef.current = [...routePointsRef.current, newPoint];
-        setRoutePoints([...routePointsRef.current]);
 
         const len = routePointsRef.current.length;
+        if (len % 5 === 0) {
+          setRoutePoints([...routePointsRef.current]);
+        }
+
         if (len <= 2 || len % 5 === 0) {
           set(
             ref(db, `riders/${riderId}/currentRoute`),
@@ -398,7 +400,6 @@ export default function RiderDashboard({ riderName, isActive = true }) {
       return;
     }
     if (battery <= BATTERY_CRITICAL) {
-      criticalModalShownForBatteryRef.current = false;
       stationsFetchedRef.current = false;
       setStations([]);
       setCriticalModal(true);
@@ -1030,6 +1031,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
               value={battery}
               onChange={(e) => setBattery(Number(e.target.value))}
               className="battery-slider"
+              disabled={isSharing}
             />
           </div>
 
