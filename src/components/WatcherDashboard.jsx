@@ -1761,8 +1761,12 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
         // Flags { low, critical } per rider prevent duplicate alerts
         // from firing on every Firebase snapshot while battery stays low.
         const bat = Number(loc.battery ?? 100);
-        if (!batteryAlertedRef.current[riderId])
-          batteryAlertedRef.current[riderId] = {};
+        if (!batteryAlertedRef.current[riderId]) {
+          batteryAlertedRef.current[riderId] = {
+            low: bat <= BATTERY_LOW,
+            critical: bat <= BATTERY_CRITICAL,
+          };
+        }
         const ba = batteryAlertedRef.current[riderId];
 
         if (bat <= BATTERY_CRITICAL && !ba.critical) {
@@ -1889,7 +1893,8 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
       // and color-code rows without needing to look up each rider separately.
       const trips = Object.entries(data).flatMap(([riderId, riderData]) => {
         if (!riderData.trips) return [];
-        const riderName = riderData.location?.name || riderId;
+        const riderName =
+          riderData.profile?.name || riderData.location?.name || riderId;
         return Object.entries(riderData.trips).map(([tripId, trip]) => ({
           id: tripId,
           riderId,
