@@ -245,7 +245,7 @@ function ReplayPanner({ headPos }) {
 function TripScoreChart({ trips, riderName, color }) {
   // Filter trips to this rider and take the most recent 10, oldest-first
   const last10 = trips
-    .filter((t) => t.riderName === riderName || t.riderId === riderName)
+    .filter((t) => (t.riderName || t.riderId) === riderName)
     .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
     .slice(-10);
 
@@ -1540,8 +1540,12 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
   const riderColorMap = useRef({}); // riderId → hex color string
   const previousInsideRef = useRef({}); // riderId → { zoneId: bool } — last known geofence state
   const sosProcessedRef = useRef({}); // riderId → bool — prevents duplicate SOS modals
+  const sosTimestampRef = useRef({}); // riderId → timestamp of last SOS — used to reset sosProcessed after 30 mins
+  const addAlertRef = useRef(null);
+  addAlertRef.current = addAlert;
   const internalRef = useRef({});
   const sentTipsRef = externalSentTipsRef ?? internalRef; // riderId_tipType → bool — global sent guard
+  const activeGeofencesRef = useRef(activeGeofences);
 
   // Active geofences: use family-specific Firebase zones if available,
   // otherwise fall back to the hardcoded static defaults in data/geofences.js
@@ -1549,6 +1553,10 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
     familyId && firebaseGeofences.length > 0
       ? firebaseGeofences
       : staticGeofences;
+
+  useEffect(() => {
+    activeGeofencesRef.current = activeGeofences;
+  }, [activeGeofences]);
 
   // Stable callback passed to MapController — avoids recreating on every render
   const handleMapReady = useCallback((m) => {
@@ -1625,7 +1633,7 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
           const promptId = `rain-${riderId}-${Date.now()}`;
           const message = `It's raining near ${riderName} (${weather.description}, ${weather.temp}°C) — send a reminder to slow down?`;
           setRainPrompts((prev) => [...prev, { id: promptId, message }]);
-          addAlert(
+          addAlertRef.current(
             `🌧️ Rain near ${riderName}: ${weather.description}, ${weather.temp}°C.`,
             "warning",
             { actionType: "rain_tip", riderId, riderName },
@@ -1720,12 +1728,16 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
           riderData.sosTriggered === true &&
           !sosProcessedRef.current[riderId]
         ) {
-          sosProcessedRef.current[riderId] = true;
-          setSosRider({ riderId, ...riderData });
-          addAlert(
-            `🚨 SOS ALERT from ${riderData.sosRiderName || riderData.location?.name || riderId}!`,
-            "danger",
-          );
+          const ts = riderData.sosTimestamp || "";
+          if (sosTimestampRef.current[riderId] !== ts) {
+            sosTimestampRef.current[riderId] = ts;
+            sosProcessedRef.current[riderId] = true;
+            setSosRider({ riderId, ...riderData });
+            addAlertRef.current(
+              `🚨 SOS ALERT from ${riderData.sosRiderName || riderData.location?.name || riderId}!`,
+              "danger",
+            );
+          }
         } else if (riderData.sosTriggered === false) {
           // SOS resolved by watcher — clear processed flag and pending banner
           sosProcessedRef.current[riderId] = false;
@@ -1754,7 +1766,7 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
 
         if (bat <= BATTERY_CRITICAL && !ba.critical) {
           ba.critical = true;
-          addAlert(
+          addAlertRef.current(
             `🚨 ${riderName} battery CRITICAL (${Math.round(bat * 10) / 10}%)! They need to stop and charge immediately.`,
             "danger",
             {
@@ -1767,7 +1779,7 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
           if (isOnline) fetchMapStations(loc.lat, lon);
         } else if (bat <= BATTERY_LOW && bat > BATTERY_CRITICAL && !ba.low) {
           ba.low = true;
-          addAlert(
+          addAlertRef.current(
             `🔋 ${riderName} battery is low (${Math.round(bat * 10) / 10}%). Consider sending a charging reminder.`,
             "warning",
             {
@@ -1804,7 +1816,7 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
               !drainAlertedRef.current[riderId]
             ) {
               drainAlertedRef.current[riderId] = true;
-              addAlert(
+              addAlertRef.current(
                 `⚡ ${riderName} is draining battery fast (${drainWh} Wh/km vs ${DRAIN_BASELINE} normal).`,
                 "warning",
                 { actionType: "drain_warning", riderId, riderName },
@@ -1821,7 +1833,7 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
             const projRange = remainingWh / drainRate;
             if (projRange < 5 && !rangeAlertedRef.current[riderId]) {
               rangeAlertedRef.current[riderId] = true;
-              addAlert(
+              addAlertRef.current(
                 `📍 ${riderName} has less than 5 km range remaining!`,
                 "danger",
                 {
@@ -1844,7 +1856,7 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
           previousInsideRef.current[riderId] = {};
         const riderZoneState = previousInsideRef.current[riderId];
 
-        activeGeofences.forEach((zone) => {
+        activeGeofencesRef.current.forEach((zone) => {
           const inside = isInsideGeofence(
             loc.lat,
             lon,
@@ -1858,11 +1870,14 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
           }
           const wasInside = riderZoneState[zone.id];
           if (inside && !wasInside) {
-            addAlert(`✓ ${riderName} entered ${zone.name}`, "success");
+            addAlertRef.current(
+              `✓ ${riderName} entered ${zone.name}`,
+              "success",
+            );
             riderZoneState[zone.id] = true;
           }
           if (!inside && wasInside) {
-            addAlert(`✗ ${riderName} left ${zone.name}`, "warning");
+            addAlertRef.current(`✗ ${riderName} left ${zone.name}`, "warning");
             riderZoneState[zone.id] = false;
           }
         });
@@ -1906,19 +1921,13 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
   // without coupling to the main listener's execution cycle.
   useEffect(() => {
     if (!OWM_KEY) return;
-    const ridersRef2 = ref(db, "riders");
-    let latestRiders = {};
-    const unsub = onValue(ridersRef2, (snap) => {
-      latestRiders = snap.val() || {};
-    });
-    const init = setTimeout(() => pollWeather(latestRiders), 3000);
-    const poll = setInterval(() => pollWeather(latestRiders), 5 * 60 * 1000);
+    const init = setTimeout(() => pollWeather(riders), 3000);
+    const poll = setInterval(() => pollWeather(riders), 5 * 60 * 1000);
     return () => {
-      unsub();
       clearTimeout(init);
       clearInterval(poll);
     };
-  }, [pollWeather]);
+  }, [pollWeather, riders]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Route Replay Engine
@@ -1989,12 +1998,11 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
       clearInterval(replayIntervalRef.current);
       replayIntervalRef.current = null;
     }
-    if (replay.active) {
-      replayIntervalRef.current = setInterval(
-        stepReplay,
-        speedToMs(replay.speed),
-      );
-    }
+    if (!replay.active) return;
+    replayIntervalRef.current = setInterval(
+      stepReplay,
+      speedToMs(replay.speed),
+    );
     return () => {
       if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
     };
@@ -2061,7 +2069,7 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
         avgSpeed: trip.avgSpeedKmh || 0,
         timestamp: trip.timestamp,
         batteryUsed: trip.batteryUsedPercent || 0, // % drained during trip
-        batteryRemaining: trip.batteryRemaining || 0, // % left after trip — FIX
+        batteryRemaining: trip.batteryRemaining ?? null, // % left after trip — FIX
         worstAxis: trip.worstAxis || "speed",
       });
     } catch (error) {
