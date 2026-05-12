@@ -108,7 +108,7 @@ export const useStore = create(
           (state.riderName ? normalizeRiderId(state.riderName) : null);
         if (riderId) {
           persistTripToFirebase(riderId, newTrip).catch((e) =>
-            console.warn("persistTripToFirebase failed:", e.message),
+            console.error("TRIP LOST from Firebase:", e.message, newTrip.id),
           );
         }
       },
@@ -119,12 +119,13 @@ export const useStore = create(
       // so Firebase-hydrated trips (which always have an id) never duplicate.
       mergeTrips: (incomingTrips) =>
         set((state) => {
-          // Build a map keyed by id for O(1) dedup
+          const makeKey = (t) =>
+            t.id || `${t.riderName || "r"}-${t.timestamp}-${t.distanceKm || 0}`;
           const existing = new Map(
-            state.tripHistory.map((t) => [t.id || t.timestamp, t]),
+            state.tripHistory.map((t) => [makeKey(t), t]),
           );
           incomingTrips.forEach((t) => {
-            const key = t.id || t.timestamp;
+            const key = makeKey(t);
             if (!existing.has(key)) existing.set(key, t);
           });
           const merged = Array.from(existing.values())

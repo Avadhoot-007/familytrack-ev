@@ -1541,11 +1541,8 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
   const previousInsideRef = useRef({}); // riderId → { zoneId: bool } — last known geofence state
   const sosProcessedRef = useRef({}); // riderId → bool — prevents duplicate SOS modals
   const sosTimestampRef = useRef({}); // riderId → timestamp of last SOS — used to reset sosProcessed after 30 mins
-  const addAlertRef = useRef(null);
-  addAlertRef.current = addAlert;
   const internalRef = useRef({});
   const sentTipsRef = externalSentTipsRef ?? internalRef; // riderId_tipType → bool — global sent guard
-  const activeGeofencesRef = useRef(activeGeofences);
 
   // Active geofences: use family-specific Firebase zones if available,
   // otherwise fall back to the hardcoded static defaults in data/geofences.js
@@ -1553,6 +1550,8 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
     familyId && firebaseGeofences.length > 0
       ? firebaseGeofences
       : staticGeofences;
+
+  const activeGeofencesRef = useRef(activeGeofences);
 
   useEffect(() => {
     activeGeofencesRef.current = activeGeofences;
@@ -1658,6 +1657,8 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
       ...prev.slice(0, 49),
     ]);
   };
+  const addAlertRef = useRef(null);
+  addAlertRef.current = addAlert;
 
   // ── handleSendReminder ────────────────────────────────────────────────────
   // Pushes a coaching tip to riders/{riderId}/coachingTips in Firebase.
