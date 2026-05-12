@@ -72,7 +72,12 @@ export const generateTripSummary = (tripData) => {
 // Required by the PDF spec; unescaped parens break the content stream parser.
 // ---------------------------------------------------------------------------
 const esc = (s) =>
-  String(s).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  String(s)
+    .replace(/\\/g, "\\\\")
+    .replace(/\r/g, "")
+    .replace(/\n/g, " ")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
 
 // ---------------------------------------------------------------------------
 // downloadTripPDF
