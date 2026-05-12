@@ -159,7 +159,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
       }
       if (location) fetchNearbyStations(location.latitude, location.longitude);
     }
-  }, [battery, isSharing, location, fetchNearbyStations]);
+  }, [battery, isSharing]);
 
   // ── Charging station fetch ────────────────────────────────────────────────
   // _doFetchStations: actual Overpass query; sets stations/loading/error state
