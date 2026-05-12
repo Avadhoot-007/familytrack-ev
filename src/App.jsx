@@ -1,6 +1,5 @@
-// src/App.jsx — main application entry
-// Provides authentication flows, family setup, and view routing between
-// Rider, Watcher, and Family panels.
+// src/App.jsx — main application entry point, handling authentication, family setup, and main view routing.
+
 import { useState, useEffect, useRef } from "react";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { ref, get, set, push, update } from "firebase/database";
@@ -12,17 +11,10 @@ import { hydrateTripsFromStorage, useStore } from "./store";
 import { setEcoConstants } from "./utils/ecoScoring";
 import { setImpactConstants } from "./utils/ecoImpactCalculations";
 
-// Generate a short 6-character invite code for family joins.
-// Uses base36 random string, trimmed and uppercased for readability.
 const makeInviteCode = () =>
   Math.random().toString(36).substring(2, 8).toUpperCase();
 
-// ── Family setup screen ───────────────────────────────────────────────────────
-
-// FamilySetup: UI and handlers for creating or joining a family group.
-// - Presents role selection (rider/watcher)
-// - Create: writes family, invite, and user records to Firebase
-// - Join: validates invite code and updates family membership
+// ── FamilySetup ───────────────────────────────────────────────────────────────
 function FamilySetup({ user, onDone }) {
   const [step, setStep] = useState("choose");
   const [role, setRole] = useState(null);
@@ -352,11 +344,7 @@ function FamilySetup({ user, onDone }) {
   );
 }
 
-// ── Auth / landing screen ─────────────────────────────────────────────────────
-
-// AuthScreen: Landing screen offering Google sign-in or guest mode.
-// - onGoogle: triggers Firebase popup sign-in
-// - onGuest: stores a local guest name (no sync)
+// ── AuthScreen ────────────────────────────────────────────────────────────────
 function AuthScreen({ onGuest, onGoogle, loading, error }) {
   const [name, setName] = useState("");
 
@@ -530,12 +518,6 @@ function AuthScreen({ onGuest, onGoogle, loading, error }) {
 }
 
 // ── Main App ──────────────────────────────────────────────────────────────────
-
-// App: top-level component managing global auth state and view routing.
-// Responsibilities:
-// - Listen to Firebase auth changes and hydrate store
-// - Fetch configuration (eco constants) from Firebase
-// - Route between RiderDashboard, WatcherDashboard and FamilyPanel
 export default function App() {
   const [view, setView] = useState("rider");
   const [authState, setAuthState] = useState("loading");
@@ -554,12 +536,7 @@ export default function App() {
   const storeRole = useStore((s) => s.role);
   const storeUserId = useStore((s) => s.userId);
 
-  // ── Hydration ────────────────────────────────────────────────────────────
-  useEffect(() => {
-    hydrateTripsFromStorage().then(() => setIsHydrated(true));
-  }, []);
-
-  // ── Fetch eco constants from Firebase on mount ───────────────────────────
+  // ── Fetch eco constants ───────────────────────────────────────────────────
   useEffect(() => {
     get(ref(db, "config/ecoConstants"))
       .then((snap) => {
@@ -572,33 +549,31 @@ export default function App() {
       .catch((e) => console.warn("ecoConstants fetch failed:", e));
   }, []);
 
-  // FIX: Mark watcher as mounted in a useEffect, not inline in JSX.
-  // This runs after render, safely outside the render path.
-  useEffect(() => {
-    if (view === "watcher") {
-      watcherMountedRef.current = true;
-    }
-  }, [view]);
+  // ── Auth state listener ───────────────────────────────────────────────────
 
-  // ── Auth state listener ──────────────────────────────────────────────────
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         const { isGuest, riderName } = useStore.getState();
         if (isGuest && riderName) {
           setAuthState("authenticated");
+          await hydrateTripsFromStorage();
+          setIsHydrated(true);
         } else {
           setAuthState("unauthenticated");
+          setIsHydrated(true);
         }
         return;
       }
 
       if (user.isAnonymous) {
         setAuthState("unauthenticated");
+        setIsHydrated(true);
         return;
       }
 
       setLocalGoogleUser(user);
+
       try {
         const userSnap = await get(ref(db, `users/${user.uid}`));
         if (userSnap.exists()) {
@@ -610,19 +585,22 @@ export default function App() {
             role: userData.role || null,
           });
           setAuthState("authenticated");
+
+          await hydrateTripsFromStorage();
         } else {
           setAuthState("needs-family");
         }
       } catch (e) {
         console.error("User profile fetch error:", e);
         setAuthState("needs-family");
+      } finally {
+        setIsHydrated(true);
       }
     });
     return () => unsub();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [setGoogleUserStore]); // FIX BUG 4: dep added
 
-  // ── Handlers ─────────────────────────────────────────────────────────────
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleGoogle = async () => {
     setAuthLoading(true);
     setAuthError("");
@@ -636,14 +614,18 @@ export default function App() {
     }
   };
 
-  const handleGuest = (name) => {
+  const handleGuest = async (name) => {
     setGuest(name.trim());
     setAuthState("authenticated");
+
+    await hydrateTripsFromStorage();
+    setIsHydrated(true);
   };
 
-  const handleFamilyDone = (data) => {
+  const handleFamilyDone = async (data) => {
     if (!data) {
       setAuthState("authenticated");
+      await hydrateTripsFromStorage();
       return;
     }
     const { familyId, role } = data;
@@ -656,6 +638,7 @@ export default function App() {
       });
     }
     setAuthState("authenticated");
+    await hydrateTripsFromStorage();
   };
 
   const handleSignOut = async () => {
@@ -667,13 +650,14 @@ export default function App() {
       console.error("Sign out error:", e);
     } finally {
       clearAuth();
+
       setLocalGoogleUser(null);
       watcherMountedRef.current = false;
       setAuthState("unauthenticated");
     }
   };
 
-  // ── Loading screen ───────────────────────────────────────────────────────
+  // ── Loading screen ────────────────────────────────────────────────────────
   if (authState === "loading" || !isHydrated) {
     return (
       <div
@@ -822,23 +806,20 @@ export default function App() {
         <RiderDashboard riderName={riderName} isActive={view === "rider"} />
       </div>
 
-      {/* WatcherDashboard — mounted once on first visit, then kept in DOM
-          hidden behind display:none to preserve Firebase listeners and
-          sentTipsRef dedup state across tab switches.
-          FIX: watcherMountedRef.current is set via useEffect (not JSX inline). */}
+      {view === "watcher" &&
+        !watcherMountedRef.current &&
+        (() => {
+          watcherMountedRef.current = true;
+          return null;
+        })()}
+
       {watcherMountedRef.current && (
         <div style={{ display: view === "watcher" ? "block" : "none" }}>
           <WatcherDashboard sentTipsRef={watcherSentTipsRef} />
         </div>
       )}
 
-      {/* Watcher first-mount trigger — renders the component when tab is first opened.
-          Subsequent renders use the watcherMountedRef guard above to keep it alive. */}
-      {view === "watcher" && !watcherMountedRef.current && (
-        <WatcherDashboard sentTipsRef={watcherSentTipsRef} />
-      )}
-
-      {/* Family panel — unmounts when not active (no persistent state needed) */}
+      {/* Family panel — unmounts when not active */}
       {view === "family" && (
         <FamilyPanel
           familyId={storeFamilyId}
@@ -852,9 +833,6 @@ export default function App() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-// tabStyle: returns consistent tab button inline styles.
-// active: whether this tab is currently selected
-// activeColor: highlight color when active
 function tabStyle(active, activeColor) {
   return {
     padding: "7px 14px",
