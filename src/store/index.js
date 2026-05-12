@@ -99,8 +99,9 @@ export const useStore = create(
         const exists = state.tripHistory.some((t) => t.id === newTrip.id);
         if (exists) return;
 
-        const updated = [...state.tripHistory, newTrip].slice(-100);
-        set({ tripHistory: updated });
+        const updated = [...state.tripHistory, newTrip];
+        const capped = updated.length > 100 ? updated.slice(-100) : updated;
+        set({ tripHistory: capped });
 
         // Firebase write is async — runs after state update, not inside it
         const riderId =
@@ -164,12 +165,13 @@ export const useStore = create(
 
 // Hydration helper: Load trips from Firebase on app startup.
 // Merges Firebase trips into local store without overwriting local-only entries.
-export const hydrateTripsFromStorage = async () => {
+export const hydrateTripsFromStorage = async (overrideRiderId) => {
   return new Promise((resolve) => {
     setTimeout(async () => {
       const state = useStore.getState();
 
       const riderId =
+        overrideRiderId ||
         state.userId ||
         (state.riderName ? normalizeRiderId(state.riderName) : null);
 
