@@ -8,6 +8,7 @@ import RiderDashboard from "./pages/RiderDashboard";
 import WatcherDashboard from "./pages/WatcherDashboardPage";
 import FamilyPanel from "./components/FamilyPanel";
 import { hydrateTripsFromStorage, useStore } from "./store";
+import { normalizeRiderId } from "./services/locationService";
 import { setEcoConstants } from "./utils/ecoScoring";
 import { setImpactConstants } from "./utils/ecoImpactCalculations";
 
@@ -615,10 +616,11 @@ export default function App() {
   };
 
   const handleGuest = async (name) => {
-    setGuest(name.trim());
+    const trimmed = name.trim();
+    setGuest(trimmed);
     setAuthState("authenticated");
 
-    await hydrateTripsFromStorage();
+    await hydrateTripsFromStorage(normalizeRiderId(trimmed));
     setIsHydrated(true);
   };
 
