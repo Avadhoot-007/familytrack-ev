@@ -1,6 +1,8 @@
 {
   "rules": {
     "riders": {
+      ".read": true,
+      ".write": false,
       "$riderId": {
         ".read": true,
         ".write": true,
