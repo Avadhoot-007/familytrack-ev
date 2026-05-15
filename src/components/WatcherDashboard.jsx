@@ -1871,6 +1871,13 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
           );
           if (!(zone.id in riderZoneState)) {
             riderZoneState[zone.id] = inside;
+            // Fire entry alert if rider is already inside on first detection
+            if (inside) {
+              addAlertRef.current(
+                `✓ ${riderName} is inside ${zone.name}`,
+                "success",
+              );
+            }
             return;
           }
           const wasInside = riderZoneState[zone.id];
