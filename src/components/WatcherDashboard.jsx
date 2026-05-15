@@ -3,11 +3,6 @@
 // Main monitoring interface for family watchers.
 // Displays: live rider map, geofences, alerts, trip history, eco trends,
 // charging stations, SOS handling, weather alerts, and route replay animation.
-//
-// KEY FIX: handleExportPDF now explicitly maps `batteryRemaining` from the
-// Firebase trip object. Previously it passed a `battery` field (wrong name),
-// causing downloadTripPDF to always fall back to (100 - batteryUsed), which
-// assumed every trip started at 100% battery — now corrected.
 // ---------------------------------------------------------------------------
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -242,10 +237,13 @@ function ReplayPanner({ headPos }) {
 // Renders: area fill, score polyline, dot markers, date labels, trend arrow.
 // Falls back to a placeholder card when fewer than 2 trips are available.
 // ─────────────────────────────────────────────────────────────────────────────
-function TripScoreChart({ trips, riderName, color }) {
-  // Filter trips to this rider and take the most recent 10, oldest-first
+function TripScoreChart({ trips, riderName, riderId, color }) {
   const last10 = trips
-    .filter((t) => (t.riderName || t.riderId) === riderName)
+    .filter((t) =>
+      riderId
+        ? t.riderId === riderId
+        : (t.riderName || t.riderId) === riderName,
+    )
     .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
     .slice(-10);
 
@@ -496,6 +494,7 @@ function TripScoreCharts({ allTrips, riderColorMap }) {
             key={name}
             trips={allTrips}
             riderName={name}
+            riderId={riderId}
             color={color}
           />
         );
@@ -928,7 +927,7 @@ function TripHistoryTable({
         <tbody>
           {filtered.map((trip) => (
             <tr
-              key={trip.id}
+              key={`${trip.riderId}-${trip.id}`}
               style={{ borderBottom: "1px solid #2a2a2a" }}
               onMouseEnter={(e) =>
                 (e.currentTarget.style.background = "#1a1a1a")
@@ -1599,8 +1598,10 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
     try {
       const results = await fetchChargingStations(lat, lon, 3);
       setChargingStations(results);
+      if (results.length === 0) chargingFetchedRef.current = false; // allow retry if empty
     } catch (e) {
       console.error("Charging fetch error:", e);
+      chargingFetchedRef.current = false; // allow retry on error
     }
   }, []);
 
@@ -1763,8 +1764,8 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
         const bat = Number(loc.battery ?? 100);
         if (!batteryAlertedRef.current[riderId]) {
           batteryAlertedRef.current[riderId] = {
-            low: bat <= BATTERY_LOW,
-            critical: bat <= BATTERY_CRITICAL,
+            low: false,
+            critical: false,
           };
         }
         const ba = batteryAlertedRef.current[riderId];
@@ -1857,42 +1858,58 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
         // ── Geofence entry/exit detection ─────────────────────────────────
         // previousInsideRef[riderId][zoneId] stores the last known inside state.
         // On first Firebase update for a rider+zone, we just initialise — no alert.
-        if (!previousInsideRef.current[riderId])
-          previousInsideRef.current[riderId] = {};
-        const riderZoneState = previousInsideRef.current[riderId];
+        // Only run geofence checks for online riders
+        if (isOnline) {
+          // Reset zone state when rider comes back online
+          if (
+            !previousInsideRef.current[riderId] ||
+            previousInsideRef.current[riderId].__wasOffline
+          ) {
+            previousInsideRef.current[riderId] = {};
+          }
+          const riderZoneState = previousInsideRef.current[riderId];
 
-        activeGeofencesRef.current.forEach((zone) => {
-          const inside = isInsideGeofence(
-            loc.lat,
-            lon,
-            zone.lat,
-            zone.lng,
-            zone.radiusKm,
-          );
-          if (!(zone.id in riderZoneState)) {
-            riderZoneState[zone.id] = inside;
-            // Fire entry alert if rider is already inside on first detection
-            if (inside) {
+          activeGeofencesRef.current.forEach((zone) => {
+            const inside = isInsideGeofence(
+              loc.lat,
+              lon,
+              zone.lat,
+              zone.lng,
+              zone.radiusKm,
+            );
+            if (!(zone.id in riderZoneState)) {
+              // First detection — initialise without firing exit alerts,
+              // but do fire entry alert so watcher knows where rider is
+              riderZoneState[zone.id] = inside;
+              if (inside) {
+                addAlertRef.current(
+                  `✓ ${riderName} is inside ${zone.name}`,
+                  "success",
+                );
+              }
+              return;
+            }
+            const wasInside = riderZoneState[zone.id];
+            if (inside && !wasInside) {
               addAlertRef.current(
-                `✓ ${riderName} is inside ${zone.name}`,
+                `✓ ${riderName} entered ${zone.name}`,
                 "success",
               );
+              riderZoneState[zone.id] = true;
+            } else if (!inside && wasInside) {
+              addAlertRef.current(
+                `✗ ${riderName} left ${zone.name}`,
+                "warning",
+              );
+              riderZoneState[zone.id] = false;
             }
-            return;
+          });
+        } else {
+          // Mark as offline so zone state resets cleanly on next online event
+          if (previousInsideRef.current[riderId]) {
+            previousInsideRef.current[riderId].__wasOffline = true;
           }
-          const wasInside = riderZoneState[zone.id];
-          if (inside && !wasInside) {
-            addAlertRef.current(
-              `✓ ${riderName} entered ${zone.name}`,
-              "success",
-            );
-            riderZoneState[zone.id] = true;
-          }
-          if (!inside && wasInside) {
-            addAlertRef.current(`✗ ${riderName} left ${zone.name}`, "warning");
-            riderZoneState[zone.id] = false;
-          }
-        });
+        }
       });
 
       // ── Flatten all rider trips for the history table ──────────────────
@@ -2939,7 +2956,7 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
       {sosRider && (
         <SOSAlertModal
           sosRider={sosRider}
-          onResolve={() => handleSOSResolve()}
+          onResolve={() => handleSOSResolve(sosRider?.riderId)}
           onClose={handleSOSModalClose}
         />
       )}
