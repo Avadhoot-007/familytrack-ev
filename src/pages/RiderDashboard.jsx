@@ -290,6 +290,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
+        lastLocationRef.current = null;
       }
       return;
     }
@@ -381,10 +382,9 @@ export default function RiderDashboard({ riderName, isActive = true }) {
     setDrainAlert(false);
     setRoutePoints([]);
     routePointsRef.current = [];
-    lowToastShownRef.current = false;
-    criticalToastShownRef.current = false;
-    // Mark modal as shown so it doesn't re-fire immediately after starting
-    criticalModalShownForBatteryRef.current = false;
+    lowToastShownRef.current = battery <= BATTERY_LOW;
+    criticalToastShownRef.current = battery <= BATTERY_CRITICAL;
+    criticalModalShownForBatteryRef.current = battery <= BATTERY_CRITICAL;
     stationsFetchedRef.current = false;
     startBatteryRef.current = batteryRef.current;
     tripStartTimeRef.current = Date.now();

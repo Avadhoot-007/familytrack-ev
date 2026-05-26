@@ -1535,6 +1535,7 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
   const drainAlertedRef = useRef({}); // riderId → bool, dedup drain rate alerts
   const rangeAlertedRef = useRef({}); // riderId → bool, dedup range-critical alerts
   const mapRef = useRef(null); // Leaflet map instance (set by MapController)
+  const ridersSnapRef = useRef({}); // last Firebase snapshot value for riders — used to detect changes and trigger effects
   const riderIndexMap = useRef({}); // riderId → insertion order index (for stable color)
   const riderColorMap = useRef({}); // riderId → hex color string
   const previousInsideRef = useRef({}); // riderId → { zoneId: bool } — last known geofence state
@@ -1950,14 +1951,22 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
   // Uses a separate onValue listener so it always reads the freshest riders data
   // without coupling to the main listener's execution cycle.
   useEffect(() => {
+    ridersSnapRef.current = riders;
+  }, [riders]);
+
+  useEffect(() => {
     if (!OWM_KEY) return;
-    const init = setTimeout(() => pollWeather(riders), 3000);
-    const poll = setInterval(() => pollWeather(riders), 5 * 60 * 1000);
+    const init = setTimeout(() => pollWeather(ridersSnapRef.current), 3000);
+    const poll = setInterval(
+      () => pollWeather(ridersSnapRef.current),
+      5 * 60 * 1000,
+    );
     return () => {
       clearTimeout(init);
       clearInterval(poll);
     };
-  }, [pollWeather, riders]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Route Replay Engine

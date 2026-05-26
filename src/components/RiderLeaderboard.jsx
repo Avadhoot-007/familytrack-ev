@@ -45,10 +45,14 @@ export default function RiderLeaderboard() {
   // re-groups local trips under the correct current name whenever it changes.
   useEffect(() => {
     loadLeaderboardData();
-    const interval = setInterval(loadLeaderboardData, 10000);
-    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localTripHistory, localRiderName]);
+
+  useEffect(() => {
+    const interval = setInterval(loadLeaderboardData, 30000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── normalizeId ──────────────────────────────────────────────────────────
   // Converts any rider name or Firebase key into a stable, lowercase,

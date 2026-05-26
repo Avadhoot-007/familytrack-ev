@@ -17,7 +17,6 @@ import {
   getEcoBadges,
   getNextBadgeTarget,
   getCoachingTips,
-  generateImpactReport,
 } from "../utils/ecoImpactCalculations";
 import { normalizeRiderId } from "../services/locationService";
 
@@ -1160,21 +1159,7 @@ const EnvironmentalImpactHub = ({
   // Holds the Set of already-unlocked badge IDs from the previous effect run.
   // Using a ref (not state) avoids triggering extra re-renders on comparison.
   // The effect then always diffs against a valid baseline Set, even in StrictMode.
-  const initialUnlockedIds = useRef(null);
-  if (initialUnlockedIds.current === null) {
-    // Compute initial baseline synchronously on first render only.
-    // Subsequent renders skip this block because the ref is already set.
-    const { savedCO2: initCO2 } = calculateCO2Savings(
-      tripHistory.reduce((s, t) => s + (t.distanceKm || t.distance || 0), 0),
-    );
-    initialUnlockedIds.current = new Set(
-      getEcoBadges(initCO2)
-        .filter((b) => b.unlocked)
-        .map((b) => b.id),
-    );
-  }
-  // prevUnlockedIdsRef now points to the stable baseline ref
-  const prevUnlockedIdsRef = initialUnlockedIds;
+  const prevUnlockedIdsRef = useRef(new Set());
 
   // ── Aggregate stats — all computed from full tripHistory ─────────────────
   // Dual field name support: store saves distanceKm/score/durationSeconds
@@ -1227,17 +1212,13 @@ const EnvironmentalImpactHub = ({
     const currentUnlockedIds = new Set(
       badges.filter((b) => b.unlocked).map((b) => b.id),
     );
-
-    // Find first badge that wasn't in the baseline but is now unlocked
     for (const id of currentUnlockedIds) {
       if (!prevUnlockedIdsRef.current.has(id)) {
         const badge = badges.find((b) => b.id === id);
         if (badge) setNewlyUnlocked(badge);
-        break; // show one overlay at a time; next fires on the next render cycle
+        break;
       }
     }
-
-    // Advance baseline so future renders diff against the current unlock state
     prevUnlockedIdsRef.current = currentUnlockedIds;
   }, [savedCO2]);
 

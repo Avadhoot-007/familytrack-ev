@@ -526,7 +526,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
-  const watcherMountedRef = useRef(false);
+  const [watcherMounted, setWatcherMounted] = useState(false);
   const watcherSentTipsRef = useRef({});
   const setGoogleUserStore = useStore((s) => s.setGoogleUser);
   const setGuest = useStore((s) => s.setGuest);
@@ -549,6 +549,12 @@ export default function App() {
       })
       .catch((e) => console.warn("ecoConstants fetch failed:", e));
   }, []);
+
+  useEffect(() => {
+    if (view === "watcher" && !watcherMounted) {
+      setWatcherMounted(true);
+    }
+  }, [view, watcherMounted]);
 
   // ── Auth state listener ───────────────────────────────────────────────────
 
@@ -652,13 +658,11 @@ export default function App() {
       console.error("Sign out error:", e);
     } finally {
       clearAuth();
-
       setLocalGoogleUser(null);
-      watcherMountedRef.current = false;
+      setWatcherMounted(false);
       setAuthState("unauthenticated");
     }
   };
-
   // ── Loading screen ────────────────────────────────────────────────────────
   if (authState === "loading" || !isHydrated) {
     return (
@@ -808,14 +812,7 @@ export default function App() {
         <RiderDashboard riderName={riderName} isActive={view === "rider"} />
       </div>
 
-      {view === "watcher" &&
-        !watcherMountedRef.current &&
-        (() => {
-          watcherMountedRef.current = true;
-          return null;
-        })()}
-
-      {watcherMountedRef.current && (
+      {watcherMounted && (
         <div style={{ display: view === "watcher" ? "block" : "none" }}>
           <WatcherDashboard sentTipsRef={watcherSentTipsRef} />
         </div>

@@ -1,13 +1,21 @@
 // CoachingTipsSystem: Real-time riding tips displayed as fixed notification panel
 // Prioritizes critical/high-priority tips over info (dismissible)
-import React, { useState } from 'react';
+import React, { useState } from "react";
 
-const CoachingTipsSystem = ({ tips = [], ecoScore = 0, onDismiss = () => {} }) => {
+const CoachingTipsSystem = ({
+  tips = [],
+  ecoScore = 0,
+  onDismiss = () => {},
+}) => {
   const [dismissedTipIds, setDismissedTipIds] = useState(new Set());
 
-  const visibleTips = tips.filter(tip => !dismissedTipIds.has(tip.title));
-  const highPriority = visibleTips.filter(t => t.priority === 'critical' || t.priority === 'high');
-  const otherTips = visibleTips.filter(t => t.priority !== 'critical' && t.priority !== 'high');
+  const visibleTips = tips.filter((tip) => !dismissedTipIds.has(tip.title));
+  const highPriority = visibleTips.filter(
+    (t) => t.priority === "critical" || t.priority === "high",
+  );
+  const otherTips = visibleTips.filter(
+    (t) => t.priority !== "critical" && t.priority !== "high",
+  );
 
   const handleDismiss = (tipTitle) => {
     setDismissedTipIds(new Set([...dismissedTipIds, tipTitle]));
@@ -20,11 +28,11 @@ const CoachingTipsSystem = ({ tips = [], ecoScore = 0, onDismiss = () => {} }) =
   return (
     <div
       style={{
-        position: 'fixed',
-        bottom: '20px',
-        right: '20px',
+        position: "fixed",
+        bottom: "20px",
+        right: "20px",
         zIndex: 1000,
-        animation: 'slideUp 0.4s ease-out',
+        animation: "slideUp 0.4s ease-out",
       }}
     >
       <style>{`
@@ -40,55 +48,85 @@ const CoachingTipsSystem = ({ tips = [], ecoScore = 0, onDismiss = () => {} }) =
 
       {displayTips.map((tip, idx) => {
         const bgColor =
-          tip.priority === 'critical' ? '#dc3545' :
-          tip.priority === 'high' ? '#ff9800' :
-          tip.priority === 'info' ? '#2196F3' :
-          '#28a745';
+          tip.priority === "critical"
+            ? "#dc3545"
+            : tip.priority === "high"
+              ? "#ff9800"
+              : tip.priority === "info"
+                ? "#2196F3"
+                : "#28a745";
 
-        const isCritical = tip.priority === 'critical' || tip.priority === 'high';
+        const isCritical =
+          tip.priority === "critical" || tip.priority === "high";
 
         return (
           <div
             key={tip.title}
             style={{
               background: bgColor,
-              color: 'white',
-              padding: '16px',
-              borderRadius: '8px',
-              marginBottom: idx < displayTips.length - 1 ? '12px' : 0,
-              maxWidth: '320px',
+              color: "white",
+              padding: "16px",
+              borderRadius: "8px",
+              marginBottom: idx < displayTips.length - 1 ? "12px" : 0,
+              maxWidth: "320px",
               boxShadow: isCritical
-                ? '0 4px 20px rgba(220, 53, 69, 0.4)'
-                : '0 4px 12px rgba(0, 0, 0, 0.2)',
-              animation: isCritical ? 'pulse 2s infinite' : 'none',
+                ? "0 4px 20px rgba(220, 53, 69, 0.4)"
+                : "0 4px 12px rgba(0, 0, 0, 0.2)",
+              animation: isCritical ? "pulse 2s infinite" : "none",
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-              <span style={{ fontSize: '24px', lineHeight: 1 }}>{tip.icon}</span>
+            <div
+              style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}
+            >
+              <span style={{ fontSize: "24px", lineHeight: 1 }}>
+                {tip.icon}
+              </span>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: '600', fontSize: '14px', marginBottom: '4px' }}>
+                <div
+                  style={{
+                    fontWeight: "600",
+                    fontSize: "14px",
+                    marginBottom: "4px",
+                  }}
+                >
                   {tip.title}
                 </div>
-                <div style={{ fontSize: '12px', lineHeight: '1.4', marginBottom: '8px' }}>
+                <div
+                  style={{
+                    fontSize: "12px",
+                    lineHeight: "1.4",
+                    marginBottom: "8px",
+                  }}
+                >
                   {tip.tip}
                 </div>
-                <div style={{ fontSize: '11px', opacity: 0.8, marginBottom: '8px' }}>
+                <div
+                  style={{
+                    fontSize: "11px",
+                    opacity: 0.8,
+                    marginBottom: "8px",
+                  }}
+                >
                   {tip.metric}
                 </div>
                 <button
                   onClick={() => handleDismiss(tip.title)}
                   style={{
-                    background: 'rgba(255, 255, 255, 0.2)',
-                    border: '1px solid rgba(255, 255, 255, 0.4)',
-                    color: 'white',
-                    padding: '4px 8px',
-                    borderRadius: '4px',
-                    fontSize: '11px',
-                    cursor: 'pointer',
-                    transition: 'background 0.2s',
+                    background: "rgba(255, 255, 255, 0.2)",
+                    border: "1px solid rgba(255, 255, 255, 0.4)",
+                    color: "white",
+                    padding: "4px 8px",
+                    borderRadius: "4px",
+                    fontSize: "11px",
+                    cursor: "pointer",
+                    transition: "background 0.2s",
                   }}
-                  onMouseEnter={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.3)'}
-                  onMouseLeave={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.2)'}
+                  onMouseEnter={(e) =>
+                    (e.target.style.background = "rgba(255, 255, 255, 0.3)")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.target.style.background = "rgba(255, 255, 255, 0.2)")
+                  }
                 >
                   Dismiss
                 </button>
@@ -105,21 +143,25 @@ const CoachingTipsSystem = ({ tips = [], ecoScore = 0, onDismiss = () => {} }) =
 export const CoachingTipsModal = ({ isOpen, tips = [], onClose }) => {
   if (!isOpen) return null;
 
-  const criticalTips = tips.filter(t => t.priority === 'critical' || t.priority === 'high');
-  const otherTips = tips.filter(t => t.priority !== 'critical' && t.priority !== 'high');
+  const criticalTips = tips.filter(
+    (t) => t.priority === "critical" || t.priority === "high",
+  );
+  const otherTips = tips.filter(
+    (t) => t.priority !== "critical" && t.priority !== "high",
+  );
   const allTips = [...criticalTips, ...otherTips];
 
   return (
     <div
       style={{
-        position: 'fixed',
+        position: "fixed",
         inset: 0,
-        background: 'rgba(0, 0, 0, 0.6)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        background: "rgba(0, 0, 0, 0.6)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
         zIndex: 2000,
-        animation: 'fadeIn 0.3s ease-out',
+        animation: "fadeIn 0.3s ease-out",
       }}
       onClick={onClose}
     >
@@ -132,26 +174,42 @@ export const CoachingTipsModal = ({ isOpen, tips = [], onClose }) => {
 
       <div
         style={{
-          background: 'white',
-          borderRadius: '12px',
-          padding: '24px',
-          maxWidth: '500px',
-          maxHeight: '80vh',
-          overflowY: 'auto',
-          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+          background: "#1a1a1a",
+          borderRadius: "12px",
+          padding: "24px",
+          maxWidth: "500px",
+          maxHeight: "80vh",
+          overflowY: "auto",
+          boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '600' }}>💡 Coaching Tips</h2>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "20px",
+          }}
+        >
+          <h2
+            style={{
+              margin: 0,
+              fontSize: "20px",
+              fontWeight: "600",
+              color: "#fff",
+            }}
+          >
+            💡 Coaching Tips
+          </h2>
           <button
             onClick={onClose}
             style={{
-              background: 'none',
-              border: 'none',
-              fontSize: '24px',
-              cursor: 'pointer',
-              color: '#999',
+              background: "none",
+              border: "none",
+              fontSize: "24px",
+              cursor: "pointer",
+              color: "#999",
             }}
           >
             ✕
@@ -159,34 +217,54 @@ export const CoachingTipsModal = ({ isOpen, tips = [], onClose }) => {
         </div>
 
         {allTips.length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "12px" }}
+          >
             {allTips.map((tip) => {
               const borderColor =
-                tip.priority === 'critical' ? '#dc3545' :
-                tip.priority === 'high' ? '#ff9800' :
-                tip.priority === 'info' ? '#2196F3' :
-                '#28a745';
+                tip.priority === "critical"
+                  ? "#dc3545"
+                  : tip.priority === "high"
+                    ? "#ff9800"
+                    : tip.priority === "info"
+                      ? "#2196F3"
+                      : "#28a745";
 
               return (
                 <div
                   key={tip.title}
                   style={{
                     border: `2px solid ${borderColor}`,
-                    borderRadius: '8px',
-                    padding: '12px',
-                    background: '#f9f9f9',
+                    borderRadius: "8px",
+                    padding: "12px",
+                    background: "#2a2a2a",
                   }}
                 >
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <span style={{ fontSize: '20px', lineHeight: 1 }}>{tip.icon}</span>
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <span style={{ fontSize: "20px", lineHeight: 1 }}>
+                      {tip.icon}
+                    </span>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: '600', fontSize: '13px', marginBottom: '4px' }}>
+                      <div
+                        style={{
+                          fontWeight: "600",
+                          fontSize: "13px",
+                          marginBottom: "4px",
+                        }}
+                      >
                         {tip.title}
                       </div>
-                      <div style={{ fontSize: '12px', lineHeight: '1.5', color: '#555', marginBottom: '6px' }}>
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          lineHeight: "1.5",
+                          color: "#ccc",
+                          marginBottom: "6px",
+                        }}
+                      >
                         {tip.tip}
                       </div>
-                      <div style={{ fontSize: '11px', color: '#999' }}>
+                      <div style={{ fontSize: "11px", color: "#999" }}>
                         {tip.metric}
                       </div>
                     </div>
@@ -196,7 +274,7 @@ export const CoachingTipsModal = ({ isOpen, tips = [], onClose }) => {
             })}
           </div>
         ) : (
-          <p style={{ color: '#666', textAlign: 'center', margin: '20px 0' }}>
+          <p style={{ color: "#666", textAlign: "center", margin: "20px 0" }}>
             No coaching tips available.
           </p>
         )}
@@ -204,16 +282,16 @@ export const CoachingTipsModal = ({ isOpen, tips = [], onClose }) => {
         <button
           onClick={onClose}
           style={{
-            width: '100%',
-            marginTop: '20px',
-            padding: '10px',
-            background: '#4CAF50',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            fontSize: '14px',
-            fontWeight: '600',
-            cursor: 'pointer',
+            width: "100%",
+            marginTop: "20px",
+            padding: "10px",
+            background: "#4CAF50",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            fontSize: "14px",
+            fontWeight: "600",
+            cursor: "pointer",
           }}
         >
           Got It
