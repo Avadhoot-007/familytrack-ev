@@ -52,7 +52,14 @@ const DRAIN_ALERT_RATIO = 1.2;
 export default function RiderDashboard({ riderName, isActive = true }) {
   // ── Component state ───────────────────────────────────────────────────────
   const [isSharing, setIsSharing] = useState(false);
-  const [battery, setBattery] = useState(85);
+  const storedBattery = useStore((s) => s.battery);
+  const setBatteryStore = useStore((s) => s.setBattery);
+  const [battery, setBatteryLocal] = useState(storedBattery ?? 85);
+
+  const setBattery = (val) => {
+    setBatteryLocal(val);
+    setBatteryStore(val);
+  };
   const [location, setLocation] = useState(null);
   const [ecoScore, setEcoScore] = useState(0);
   const [tripDistance, setTripDistance] = useState(0);

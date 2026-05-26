@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { ref, get, set, push, update } from "firebase/database";
+import { ref, get, set, push, update, onValue } from "firebase/database";
 import { auth, db, googleProvider } from "./config/firebase";
 import RiderDashboard from "./pages/RiderDashboard";
 import WatcherDashboard from "./pages/WatcherDashboardPage";
@@ -539,15 +539,15 @@ export default function App() {
 
   // ── Fetch eco constants ───────────────────────────────────────────────────
   useEffect(() => {
-    get(ref(db, "config/ecoConstants"))
-      .then((snap) => {
-        if (snap.exists()) {
-          const c = snap.val();
-          setEcoConstants(c);
-          setImpactConstants(c);
-        }
-      })
-      .catch((e) => console.warn("ecoConstants fetch failed:", e));
+    const ecoConstantsRef = ref(db, "config/ecoConstants");
+    const unsubEco = onValue(ecoConstantsRef, (snap) => {
+      if (snap.exists()) {
+        const c = snap.val();
+        setEcoConstants(c);
+        setImpactConstants(c);
+      }
+    });
+    return () => unsubEco();
   }, []);
 
   useEffect(() => {
