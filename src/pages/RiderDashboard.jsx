@@ -21,7 +21,7 @@ import {
   fetchChargingStations,
   buildMapsUrl,
 } from "../services/chargingStations";
-import { useStore } from "../store";
+import { hydrateTripsFromStorage, useStore } from "../store";
 import RiderLeaderboard from "../components/RiderLeaderboard";
 import SOSModal from "../components/SOSModal";
 import EnvironmentalImpactHub from "../components/EnvironmentalImpactHub";
@@ -960,7 +960,10 @@ export default function RiderDashboard({ riderName, isActive = true }) {
         </button>
         <button
           className={`tab-btn ${activeTab === "impact" ? "active" : ""}`}
-          onClick={() => setActiveTab("impact")}
+          onClick={() => {
+            setActiveTab("impact");
+            hydrateTripsFromStorage(riderId);
+          }}
         >
           🌱 Impact Hub
         </button>
