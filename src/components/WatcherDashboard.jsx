@@ -1925,8 +1925,12 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
       // and color-code rows without needing to look up each rider separately.
       const trips = Object.entries(data).flatMap(([riderId, riderData]) => {
         if (!riderData.trips) return [];
+        const tripValues = Object.values(riderData.trips);
         const riderName =
-          riderData.profile?.name || riderData.location?.name || riderId;
+          tripValues.find((t) => t.riderName)?.riderName ||
+          riderData.profile?.name ||
+          riderData.location?.name ||
+          "Rider";
         return Object.entries(riderData.trips).map(([tripId, trip]) => ({
           ...trip,
           id: tripId,
@@ -2324,7 +2328,14 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
         {Object.entries(riders).map(([riderId, riderData]) => {
           const isOnline = riderData.status === "online";
           const color = riderColorMap.current[riderId] || "#999";
-          const name = riderData.location?.name || riderId;
+          const tripValues = riderData.trips
+            ? Object.values(riderData.trips)
+            : [];
+          const name =
+            tripValues.find((t) => t.riderName)?.riderName ||
+            riderData.location?.name ||
+            riderData.profile?.name ||
+            "Rider";
           const hasSOS = riderData.sosTriggered && !riderData.sosResolved;
           const bat = Number(riderData.location?.battery ?? 100);
           const weather = riderWeather[riderId];
