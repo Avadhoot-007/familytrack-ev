@@ -1551,7 +1551,7 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
       ? firebaseGeofences
       : staticGeofences;
 
-  const activeGeofencesRef = useRef(activeGeofences);
+  const activeGeofencesRef = useRef(staticGeofences);
 
   useEffect(() => {
     activeGeofencesRef.current = activeGeofences;
