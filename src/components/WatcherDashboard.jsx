@@ -5,7 +5,7 @@
 // charging stations, SOS handling, weather alerts, and route replay animation.
 // ---------------------------------------------------------------------------
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { ref, onValue, update, push } from "firebase/database";
 import { db } from "../config/firebase";
 import {
@@ -469,7 +469,10 @@ function TripScoreChart({ trips, riderName, riderId, color }) {
 // Renders one TripScoreChart per unique rider name found in allTrips.
 // Resolves each rider's assigned color from the shared riderColorMap ref.
 // ─────────────────────────────────────────────────────────────────────────────
-function TripScoreCharts({ allTrips, riderColorMap }) {
+const TripScoreCharts = React.memo(function TripScoreCharts({
+  allTrips,
+  riderColorMap,
+}) {
   // Deduplicate rider names from the trip list
   const riderNames = [
     ...new Set(allTrips.map((t) => t.riderName || t.riderId).filter(Boolean)),
@@ -501,7 +504,7 @@ function TripScoreCharts({ allTrips, riderColorMap }) {
       })}
     </div>
   );
-}
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RainPrompt
@@ -810,10 +813,14 @@ function TripStatsSummary({ trips, filterDays }) {
   );
   const avgSpeed =
     filtered.reduce((s, t) => s + (Number(t.avgSpeedKmh) || 0), 0) / totalTrips;
-  const avgScore =
-    filtered.reduce((s, t) => s + (Number(t.score) || 0), 0) / totalTrips;
-  const bestScore = Math.max(...filtered.map((t) => Number(t.score || 0)));
-  const worstScore = Math.min(...filtered.map((t) => Number(t.score || 0)));
+  const validScores = filtered
+    .map((t) => Number(t.score || t.ecoScore || null))
+    .filter((s) => s !== null && !isNaN(s) && s > 0);
+  const avgScore = validScores.length
+    ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length)
+    : 0;
+  const bestScore = validScores.length ? Math.max(...validScores) : 0;
+  const worstScore = validScores.length ? Math.min(...validScores) : 0;
 
   // Reusable stat tile sub-component — keeps the grid DRY
   const StatBox = ({ emoji, label, value }) => (
@@ -1921,14 +1928,22 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
         const riderName =
           riderData.profile?.name || riderData.location?.name || riderId;
         return Object.entries(riderData.trips).map(([tripId, trip]) => ({
+          ...trip,
           id: tripId,
           riderId,
           riderName,
           riderColor: riderColorMap.current[riderId],
-          ...trip,
         }));
       });
-      setAllTrips(trips);
+      setAllTrips((prev) => {
+        if (
+          JSON.stringify(prev.map((t) => t.id + t.riderId)) ===
+          JSON.stringify(trips.map((t) => t.id + t.riderId))
+        ) {
+          return prev;
+        }
+        return trips;
+      });
 
       // Set the first online rider as the map center anchor (only on first online event)
       const onlineEntry = Object.entries(data).find(([, r]) => {
