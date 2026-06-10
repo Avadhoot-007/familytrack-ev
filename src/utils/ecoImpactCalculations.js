@@ -94,11 +94,12 @@ export const getEcoBadges = (totalCO2Saved) => {
     (a, b) => a[1].co2 - b[1].co2,
   );
 
+  let foundFirstLocked = false;
+
   for (let i = 0; i < sortedThresholds.length; i++) {
     const [key, badge] = sortedThresholds[i];
 
     if (totalCO2Saved >= badge.co2) {
-      // Fully unlocked — 100% progress
       badges.push({
         id: key,
         label: badge.label,
@@ -107,8 +108,8 @@ export const getEcoBadges = (totalCO2Saved) => {
         co2: badge.co2,
         progress: 100,
       });
-    } else {
-      // First locked tier — compute partial progress from previous threshold
+    } else if (!foundFirstLocked) {
+      foundFirstLocked = true;
       const prevThreshold = i > 0 ? sortedThresholds[i - 1][1].co2 : 0;
       const progress = Math.round(
         ((totalCO2Saved - prevThreshold) / (badge.co2 - prevThreshold)) * 100,
@@ -119,9 +120,8 @@ export const getEcoBadges = (totalCO2Saved) => {
         desc: badge.desc,
         unlocked: false,
         co2: badge.co2,
-        progress: Math.min(progress, 99), // never show 100% for a locked badge
+        progress: Math.min(progress, 99),
       });
-      break; // stop — don't show tiers beyond the next target
     }
   }
 
