@@ -100,8 +100,7 @@ export const useStore = create(
         if (exists) return;
 
         const updated = [...state.tripHistory, newTrip];
-        const capped = updated.length > 100 ? updated.slice(-100) : updated;
-        set({ tripHistory: capped });
+        set({ tripHistory: updated });
 
         // Firebase write is async — runs after state update, not inside it
         const riderId =
@@ -128,9 +127,9 @@ export const useStore = create(
             const key = makeKey(t);
             if (!existing.has(key)) existing.set(key, t);
           });
-          const merged = Array.from(existing.values())
-            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-            .slice(-100);
+          const merged = Array.from(existing.values()).sort(
+            (a, b) => new Date(a.timestamp) - new Date(b.timestamp),
+          );
           return { tripHistory: merged };
         }),
 
