@@ -148,6 +148,16 @@ export const useStore = create(
     }),
     {
       name: STORAGE_KEY,
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        const name = state.riderName;
+        if (name && state.tripHistory?.length) {
+          state.tripHistory = state.tripHistory.map((t) => ({
+            ...t,
+            riderName: t.riderName || name,
+          }));
+        }
+      },
       partialize: (state) => ({
         battery: state.battery,
         riderName: state.riderName,
@@ -177,9 +187,14 @@ export const hydrateTripsFromStorage = async (overrideRiderId) => {
         try {
           const firebaseTrips = await loadTripsFromFirebase(riderId);
           if (firebaseTrips.length > 0) {
-            useStore.getState().mergeTrips(firebaseTrips);
+            const currentName = useStore.getState().riderName;
+            const patchedTrips = firebaseTrips.map((t) => ({
+              ...t,
+              riderName: t.riderName || currentName || "Rider",
+            }));
+            useStore.getState().mergeTrips(patchedTrips);
             console.log(
-              `✓ Hydrated — merged ${firebaseTrips.length} Firebase trips`,
+              `✓ Hydrated — merged ${patchedTrips.length} Firebase trips`,
             );
           } else {
             console.log("✓ Hydrated — no Firebase trips found");
