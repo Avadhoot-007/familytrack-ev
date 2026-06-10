@@ -19,7 +19,7 @@ import {
   getCoachingTips,
 } from "../utils/ecoImpactCalculations";
 import { normalizeRiderId } from "../services/locationService";
-
+import RiderLeaderboard from "./RiderLeaderboard";
 import { downloadTripPDF } from "../utils/tripPDFExport";
 
 // ---------------------------------------------------------------------------
@@ -1127,6 +1127,182 @@ function ChallengesTab({ tripHistory }) {
 }
 
 // ---------------------------------------------------------------------------
+// EcoImpactLeaderboard
+// Top 5 riders ranked by composite score: (CO2 saved * 0.6) + (avgEcoScore * 0.4)
+// Reads from tripHistory prop — same source as the rest of Impact Hub.
+// ---------------------------------------------------------------------------
+function EcoImpactLeaderboard({ tripHistory }) {
+  const riderMap = {};
+
+  tripHistory.forEach((t) => {
+    const name = t.riderName || "Rider";
+    const key = normalizeRiderId(name);
+    if (!riderMap[key])
+      riderMap[key] = { name, co2: 0, totalScore: 0, trips: 0 };
+    const dist = t.distanceKm || t.distance || 0;
+    riderMap[key].co2 += calculateCO2Savings(dist).savedCO2;
+    riderMap[key].totalScore += t.score || t.ecoScore || 0;
+    riderMap[key].trips += 1;
+  });
+
+  const ranked = Object.values(riderMap)
+    .map((r) => {
+      const avgScore = r.trips > 0 ? Math.round(r.totalScore / r.trips) : 0;
+      const composite = parseFloat((r.co2 * 0.6 + avgScore * 0.4).toFixed(1));
+      return {
+        name: r.name,
+        co2: parseFloat(r.co2.toFixed(2)),
+        trees: parseFloat(calculateTreeEquivalents(r.co2).toFixed(2)),
+        avgScore,
+        trips: r.trips,
+        composite,
+      };
+    })
+    .sort((a, b) => b.composite - a.composite)
+    .slice(0, 5);
+
+  const medals = ["🥇", "🥈", "🥉"];
+  const scoreColor = (s) =>
+    s >= 80 ? "#4CAF50" : s >= 60 ? "#ffc107" : "#dc3545";
+
+  if (ranked.length === 0) {
+    return (
+      <div className="eco-card">
+        <h2>🌍 Eco Impact Leaderboard</h2>
+        <p className="no-data">No trips recorded yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="eco-card">
+      <h2>🌍 Eco Impact Leaderboard</h2>
+      <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#666" }}>
+        Ranked by composite score — CO₂ saved (60%) + avg eco score (40%)
+      </p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        {ranked.map((r, i) => {
+          const pct = Math.min(
+            100,
+            Math.round((r.composite / (ranked[0].composite || 1)) * 100),
+          );
+          return (
+            <div
+              key={r.name}
+              style={{
+                background:
+                  i === 0
+                    ? "linear-gradient(135deg, #1a3a1a, #2a2a2a)"
+                    : "#2a2a2a",
+                border: `1px solid ${i === 0 ? "#4CAF50" : "#404040"}`,
+                borderRadius: "10px",
+                padding: "14px 16px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  marginBottom: "8px",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "22px",
+                    width: "28px",
+                    textAlign: "center",
+                  }}
+                >
+                  {i < 3 ? medals[i] : `#${i + 1}`}
+                </span>
+                <span
+                  style={{
+                    fontWeight: "700",
+                    fontSize: "15px",
+                    color: "#fff",
+                    flex: 1,
+                  }}
+                >
+                  {r.name}
+                </span>
+                <span
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: "700",
+                    color: "#4CAF50",
+                  }}
+                >
+                  {r.composite} pts
+                </span>
+              </div>
+
+              {/* Composite progress bar */}
+              <div
+                style={{
+                  background: "#111",
+                  borderRadius: "4px",
+                  height: "5px",
+                  marginBottom: "10px",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${pct}%`,
+                    background:
+                      i === 0
+                        ? "linear-gradient(90deg, #4CAF50, #81c784)"
+                        : "#555",
+                    borderRadius: "4px",
+                    transition: "width 0.4s ease",
+                  }}
+                />
+              </div>
+
+              {/* Stat row */}
+              <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "12px", color: "#888" }}>
+                  ♻️ <strong style={{ color: "#81c784" }}>{r.co2} kg</strong>{" "}
+                  CO₂
+                </span>
+                <span style={{ fontSize: "12px", color: "#888" }}>
+                  🌳 <strong style={{ color: "#a5d6a7" }}>{r.trees}</strong>{" "}
+                  trees
+                </span>
+                <span style={{ fontSize: "12px", color: "#888" }}>
+                  🌿{" "}
+                  <strong style={{ color: scoreColor(r.avgScore) }}>
+                    {r.avgScore}/100
+                  </strong>
+                </span>
+                <span style={{ fontSize: "12px", color: "#888" }}>
+                  🚴 <strong style={{ color: "#e0e0e0" }}>{r.trips}</strong>{" "}
+                  trips
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p
+        style={{
+          margin: "14px 0 0",
+          fontSize: "11px",
+          color: "#444",
+          textAlign: "center",
+        }}
+      >
+        Showing top 5 · Full rankings in Leaderboard tab
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // EnvironmentalImpactHub — main component
 //
 // Aggregates trip history into cumulative environmental stats, drives badge
@@ -2225,66 +2401,9 @@ const EnvironmentalImpactHub = ({
         )}
 
         {/* ── LEADERBOARD TAB ───────────────────────────────────────────────── */}
-        {/* Groups all trips by riderName; ranks by CO2 saved descending */}
         {viewMode === "leaderboard" && (
-          <div className="eco-card">
-            <h2>🏅 Eco Leaderboard</h2>
-            {leaderboardData.length === 0 ? (
-              <p className="no-data">
-                No trip data yet — complete or simulate a trip to appear here.
-              </p>
-            ) : (
-              <table className="leaderboard-table">
-                <thead>
-                  <tr>
-                    <th>Rank</th>
-                    <th>Rider</th>
-                    <th>CO₂ Saved</th>
-                    <th>Tree Equiv.</th>
-                    <th>Trips</th>
-                    <th>Avg Score</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leaderboardData.map((entry) => (
-                    <tr key={entry.rank}>
-                      <td>
-                        {/* Medal emoji for top 3; # number for the rest */}
-                        {entry.rank <= 3 ? (
-                          <span className="rank-badge">
-                            {["🥇", "🥈", "🥉"][entry.rank - 1]}
-                          </span>
-                        ) : (
-                          <span style={{ color: "#888" }}>#{entry.rank}</span>
-                        )}
-                      </td>
-                      <td
-                        style={{
-                          fontWeight: entry.rank <= 3 ? "700" : "400",
-                          color: "#fff",
-                        }}
-                      >
-                        {entry.name}
-                      </td>
-                      <td>{entry.co2Saved} kg</td>
-                      <td>{entry.trees}</td>
-                      <td>{entry.trips}</td>
-                      <td
-                        style={{
-                          color: scoreColor(entry.avgScore),
-                          fontWeight: "600",
-                        }}
-                      >
-                        {entry.avgScore}/100
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <EcoImpactLeaderboard tripHistory={tripHistory} />
         )}
-
         {/* ── CHALLENGES TAB ────────────────────────────────────────────────── */}
         {/* Delegates fully to ChallengesTab which owns streak/challenge state */}
         {viewMode === "challenges" && (
