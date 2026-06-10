@@ -2001,24 +2001,25 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
     setReplay({
       active: true,
       route: trip.route,
-      currentIndex: 0,
+      currentIndex: 1,
       totalPoints,
       color,
       riderName: trip.riderName || trip.riderId || "Rider",
       speed: 5,
-      visibleRoute: [trip.route[0]],
+      visibleRoute: trip.route.slice(0, 2),
     });
   }, []);
 
   // stepReplay: advances visibleRoute by exactly 1 point.
   // Stops automatically (clears interval + sets active:false) at end of route.
   const stepReplay = useCallback(() => {
+    const intervalId = replayIntervalRef.current;
     setReplay((prev) => {
       if (!prev.active) return prev;
       const nextIndex = prev.currentIndex + 1;
       if (nextIndex >= prev.totalPoints) {
-        // End of route reached — clean up
-        if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
+        // Snapshot the id before entering updater — avoids stale closure on ref
+        if (intervalId) clearInterval(intervalId);
         replayIntervalRef.current = null;
         return { ...prev, active: false, visibleRoute: [] };
       }
@@ -2060,6 +2061,8 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
       active: false,
       visibleRoute: [],
       currentIndex: 0,
+      route: [],
+      totalPoints: 0,
     }));
   }, []);
 
@@ -2518,7 +2521,7 @@ export default function WatcherDashboard({ sentTipsRef: externalSentTipsRef }) {
                     smoothFactor: 1,
                   }}
                 />
-                {validRoute(replay.visibleRoute) && (
+                {replay.visibleRoute.length >= 2 && (
                   <Polyline
                     key="replay-line"
                     positions={replay.visibleRoute}
