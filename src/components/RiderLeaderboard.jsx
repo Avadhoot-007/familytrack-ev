@@ -37,10 +37,10 @@ export default function RiderLeaderboard() {
           if (!trips.length) return;
 
           const displayName =
-            riderData.profile?.name ||
             trips.find((t) => t.riderName)?.riderName ||
+            riderData.profile?.name ||
             riderData.location?.name ||
-            riderId;
+            "Rider";
 
           const id = normalizeId(riderId);
           if (!riderMap[id])
@@ -60,7 +60,7 @@ export default function RiderLeaderboard() {
           const rawId =
             t.riderId || normalizeId(localRiderName || "local-rider");
           const id = normalizeId(rawId);
-          const name = t.riderName || localRiderName || id;
+          const name = t.riderName || localRiderName || "Rider";
 
           if (!riderMap[id]) riderMap[id] = { name, tripSet: new Map() };
 
