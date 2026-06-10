@@ -1383,7 +1383,10 @@ export default function RiderDashboard({ riderName, isActive = true }) {
             duration: tripDuration,
             ecoScore: Math.round(ecoScore),
             avgSpeed,
-            batteryUsed: 100 - battery,
+            batteryUsed:
+              startBatteryRef.current != null
+                ? Math.max(0, startBatteryRef.current - batteryRef.current)
+                : 0,
           }}
         />
       )}
