@@ -1219,13 +1219,24 @@ const EnvironmentalImpactHub = ({
     const currentUnlockedIds = new Set(
       badges.filter((b) => b.unlocked).map((b) => b.id),
     );
+
+    const TIER_ORDER = ["seedling", "sapling", "oak", "forest", "champion"];
+
+    let highestNew = null;
     for (const id of currentUnlockedIds) {
       if (!prevUnlockedIdsRef.current.has(id)) {
         const badge = badges.find((b) => b.id === id);
-        if (badge) setNewlyUnlocked(badge);
-        break;
+        if (!badge) continue;
+        if (
+          !highestNew ||
+          TIER_ORDER.indexOf(id) > TIER_ORDER.indexOf(highestNew.id)
+        ) {
+          highestNew = badge;
+        }
       }
     }
+
+    if (highestNew) setNewlyUnlocked(highestNew);
     prevUnlockedIdsRef.current = currentUnlockedIds;
   }, [savedCO2]);
 
