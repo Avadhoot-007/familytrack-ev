@@ -478,6 +478,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
       addCompletedTrip({
         id: tripId, // ← explicit ID prevents auto-generation of a second one
         riderName,
+        riderId,
         distanceKm: parseFloat(tripDistance.toFixed(2)),
         durationSeconds: tripDuration,
         score: tripEcoScore,
@@ -670,6 +671,7 @@ export default function RiderDashboard({ riderName, isActive = true }) {
       addCompletedTrip({
         id: simTripId, // ← explicit ID; prevents second auto-generated write
         riderName,
+        riderId,
         distanceKm: parseFloat(profile.distance.toFixed(2)),
         durationSeconds: profile.duration,
         score: tripEcoScore,

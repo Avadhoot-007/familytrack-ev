@@ -195,6 +195,7 @@ function BadgeUnlockOverlay({ badge, onDone }) {
 
   return (
     <div
+      onClick={onDone}
       style={{
         position: "fixed",
         inset: 0,
@@ -204,6 +205,7 @@ function BadgeUnlockOverlay({ badge, onDone }) {
         justifyContent: "center",
         zIndex: 9999,
         animation: "badgeOverlayIn 0.3s ease",
+        cursor: "pointer",
       }}
     >
       <div
