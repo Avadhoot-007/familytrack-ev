@@ -1163,6 +1163,11 @@ const EnvironmentalImpactHub = ({
   // The effect then always diffs against a valid baseline Set, even in StrictMode.
   const prevUnlockedIdsRef = useRef(new Set());
 
+  // Reset pagination cursor when new trips arrive
+  useEffect(() => {
+    setTripLimit(5);
+  }, [tripHistory.length]);
+
   // ── Aggregate stats — all computed from full tripHistory ─────────────────
   // Dual field name support: store saves distanceKm/score/durationSeconds
   // but older and simulated trips may use distance/ecoScore/duration.
