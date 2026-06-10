@@ -120,8 +120,7 @@ export const useStore = create(
       // so Firebase-hydrated trips (which always have an id) never duplicate.
       mergeTrips: (incomingTrips) =>
         set((state) => {
-          const makeKey = (t) =>
-            t.id || `${t.riderName || "r"}-${t.timestamp}-${t.distanceKm || 0}`;
+          const makeKey = (t) => t.id || `${t.riderName || "r"}-${t.timestamp}`;
           const existing = new Map(
             state.tripHistory.map((t) => [makeKey(t), t]),
           );
