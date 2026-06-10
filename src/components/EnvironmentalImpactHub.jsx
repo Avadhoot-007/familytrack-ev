@@ -47,6 +47,8 @@ const calculateStreak = (tripHistory) => {
     d.setDate(today.getDate() - i);
     if (tripDates.has(d.toDateString())) {
       streak++;
+    } else if (i === 0) {
+      continue; // today not yet ridden — don't break streak
     } else {
       break;
     }
@@ -63,9 +65,10 @@ const calculateStreak = (tripHistory) => {
 const getWeeklyProgress = (tripHistory) => {
   const now = new Date();
 
-  // Find the start of the current week (Sunday 00:00:00)
+  // Find the start of the current week (Monday 00:00:00)
   const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - now.getDay());
+  const day = now.getDay();
+  weekStart.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
   weekStart.setHours(0, 0, 0, 0);
 
   // Filter to trips that fall within this week
@@ -176,9 +179,8 @@ const WEEKLY_CHALLENGES = [
 // Sunday (day 0) -> 7 days remaining; all other days -> 7 - day.
 // ---------------------------------------------------------------------------
 const daysUntilReset = () => {
-  const now = new Date();
-  const day = now.getDay(); // 0 = Sunday
-  return day === 0 ? 7 : 7 - day;
+  const day = new Date().getDay(); // 0 = Sunday, 1 = Monday
+  return day === 1 ? 7 : day === 0 ? 1 : 8 - day; // days until next Monday
 };
 
 // ---------------------------------------------------------------------------
@@ -831,7 +833,7 @@ function ChallengesTab({ tripHistory }) {
                     color: hasTrip ? "#fff" : "#444",
                   }}
                 >
-                  {hasTrip ? "✓" : ["S", "M", "T", "W", "T", "F", "S"][day - 1]}
+                  {hasTrip ? "✓" : ["M", "T", "W", "T", "F", "S", "S"][day - 1]}
                 </div>
               );
             })}
@@ -1337,7 +1339,7 @@ const EnvironmentalImpactHub = ({
   // Holds the Set of already-unlocked badge IDs from the previous effect run.
   // Using a ref (not state) avoids triggering extra re-renders on comparison.
   // The effect then always diffs against a valid baseline Set, even in StrictMode.
-  const prevUnlockedIdsRef = useRef(new Set());
+  const prevUnlockedIdsRef = useRef(null);
 
   // Reset pagination cursor when new trips arrive
   useEffect(() => {
@@ -1395,6 +1397,12 @@ const EnvironmentalImpactHub = ({
     const currentUnlockedIds = new Set(
       badges.filter((b) => b.unlocked).map((b) => b.id),
     );
+
+    // First render — capture baseline without triggering any animation
+    if (prevUnlockedIdsRef.current === null) {
+      prevUnlockedIdsRef.current = currentUnlockedIds;
+      return;
+    }
 
     const TIER_ORDER = ["seedling", "sapling", "oak", "forest", "champion"];
 
