@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { ref, onValue, set, remove, push } from "firebase/database";
+import { ref, onValue, set, remove, push, update } from "firebase/database";
 import { db } from "../config/firebase";
 import {
   MapContainer,
@@ -8,6 +8,7 @@ import {
   Marker,
   Popup,
   useMapEvents,
+  useMap,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -22,6 +23,155 @@ function MapClickHandler({ onMapClick, isPlacing }) {
     },
   });
   return null;
+}
+
+// ── Fly to location when search result selected ────────────────────────────
+function MapFlyTo({ target }) {
+  const map = useMap();
+  useEffect(() => {
+    if (target) {
+      map.setView([target.lat, target.lon], 15, { animate: true });
+    }
+  }, [target, map]);
+  return null;
+}
+
+// ── Location search bar using Nominatim (free, no key) ─────────────────────
+function LocationSearch({ onSelect }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const debounceRef = useRef(null);
+
+  const search = async (q) => {
+    if (q.trim().length < 3) {
+      setResults([]);
+      return;
+    }
+    setSearching(true);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`,
+        { headers: { "Accept-Language": "en" } },
+      );
+      const data = await res.json();
+      setResults(data);
+    } catch {
+      setResults([]);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleChange = (e) => {
+    const val = e.target.value;
+    setQuery(val);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => search(val), 400);
+  };
+
+  const handlePick = (result) => {
+    setQuery(result.display_name.split(",")[0]);
+    setResults([]);
+    onSelect({
+      lat: parseFloat(result.lat),
+      lon: parseFloat(result.lon),
+      name: result.display_name.split(",")[0],
+    });
+  };
+
+  const handleClear = () => {
+    setQuery("");
+    setResults([]);
+  };
+
+  return (
+    <div style={{ position: "relative", marginBottom: "12px" }}>
+      <div style={{ position: "relative" }}>
+        <input
+          style={{
+            width: "100%",
+            padding: "10px 36px 10px 12px",
+            background: "#111318",
+            border: "1px solid #3b82f6",
+            borderRadius: "8px",
+            color: "#fff",
+            fontSize: "14px",
+            boxSizing: "border-box",
+            fontFamily: "Arial",
+            outline: "none",
+          }}
+          type="text"
+          placeholder="🔍 Search location to place zone..."
+          value={query}
+          onChange={handleChange}
+          autoComplete="off"
+        />
+        {query && (
+          <button
+            onClick={handleClear}
+            style={{
+              position: "absolute",
+              right: "10px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "none",
+              border: "none",
+              color: "#555",
+              cursor: "pointer",
+              fontSize: "14px",
+              lineHeight: 1,
+              padding: 0,
+            }}
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      {searching && (
+        <p style={{ color: "#888", fontSize: "12px", margin: "4px 0 0 2px" }}>
+          Searching...
+        </p>
+      )}
+      {results.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            top: "44px",
+            left: 0,
+            right: 0,
+            background: "#1a1d27",
+            border: "1px solid #2a2d3a",
+            borderRadius: "8px",
+            zIndex: 9999,
+            maxHeight: "200px",
+            overflowY: "auto",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+          }}
+        >
+          {results.map((r) => (
+            <div
+              key={r.place_id}
+              onClick={() => handlePick(r)}
+              style={{
+                padding: "10px 14px",
+                cursor: "pointer",
+                fontSize: "13px",
+                color: "#e0e0e0",
+                borderBottom: "1px solid #1e2130",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "#2a2d3a")
+              }
+              onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+            >
+              📍 {r.display_name}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Crosshair icon for placing ─────────────────────────────────────────────
@@ -40,22 +190,6 @@ const crosshairIcon = L.divIcon({
   iconSize: [32, 32],
   iconAnchor: [16, 16],
 });
-
-const zoneIcon = (color) =>
-  L.divIcon({
-    className: "",
-    html: `<div style="
-    width:28px;height:28px;
-    border:2px solid ${color};
-    border-radius:50% 50% 50% 0;
-    background:${color}cc;
-    transform:rotate(-45deg);
-    box-shadow:0 2px 8px rgba(0,0,0,0.4);
-  "></div>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 28],
-    popupAnchor: [0, -30],
-  });
 
 const ZONE_COLORS = [
   "#3b82f6",
@@ -80,6 +214,8 @@ export default function GeofenceEditor({ familyId }) {
   const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [editingZoneId, setEditingZoneId] = useState(null);
+  const [flyTarget, setFlyTarget] = useState(null);
   const mapRef = useRef(null);
 
   // ── Firebase listener ────────────────────────────────────────────────────
@@ -106,7 +242,17 @@ export default function GeofenceEditor({ familyId }) {
   const handleMapClick = (lat, lon) => {
     setPendingLat(lat);
     setPendingLon(lon);
-    setIsPlacing(false); // stop placing mode, show form
+    setIsPlacing(false);
+  };
+
+  // ── Search result selected — fly map + pre-fill form ──────────────────────
+  const handleSearchSelect = ({ lat, lon, name }) => {
+    setPendingLat(lat);
+    setPendingLon(lon);
+    if (!pendingName) setPendingName(name);
+    setIsPlacing(false);
+    setError("");
+    setFlyTarget({ lat, lon });
   };
 
   const handleSave = async () => {
@@ -115,31 +261,48 @@ export default function GeofenceEditor({ familyId }) {
       return;
     }
     if (pendingLat === null || pendingLon === null) {
-      setError("Click the map to place a zone center.");
+      setError("Select a location via search or map click.");
       return;
     }
     if (!familyId) {
       setError("No family ID — sign in with Google.");
       return;
     }
+    if (!editingZoneId && zones.length >= 10) {
+      setError("Maximum 10 zones allowed.");
+      return;
+    }
 
     setSaving(true);
     setError("");
     try {
-      const zonesRef = ref(db, `families/${familyId}/geofences`);
-      await push(zonesRef, {
-        name: pendingName.trim(),
-        lat: pendingLat,
-        lng: pendingLon,
-        radiusKm: pendingRadius,
-        createdAt: new Date().toISOString(),
-      });
-      // Reset
+      const savedName = pendingName.trim();
+      if (editingZoneId) {
+        await set(ref(db, `families/${familyId}/geofences/${editingZoneId}`), {
+          name: savedName,
+          lat: pendingLat,
+          lng: pendingLon,
+          radiusKm: pendingRadius,
+          updatedAt: new Date().toISOString(),
+        });
+        showSuccess(`Zone "${savedName}" updated.`);
+      } else {
+        const zonesRef = ref(db, `families/${familyId}/geofences`);
+        await push(zonesRef, {
+          name: savedName,
+          lat: pendingLat,
+          lng: pendingLon,
+          radiusKm: pendingRadius,
+          createdAt: new Date().toISOString(),
+        });
+        showSuccess(`Zone "${savedName}" saved.`);
+      }
       setPendingLat(null);
       setPendingLon(null);
       setPendingName("");
       setPendingRadius(0.5);
-      showSuccess(`Zone "${pendingName.trim()}" saved.`);
+      setEditingZoneId(null);
+      setFlyTarget(null);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -167,6 +330,18 @@ export default function GeofenceEditor({ familyId }) {
     setPendingName("");
     setPendingRadius(0.5);
     setError("");
+    setEditingZoneId(null);
+    setFlyTarget(null);
+  };
+
+  const handleEditZone = (zone) => {
+    setPendingLat(zone.lat);
+    setPendingLon(zone.lng);
+    setPendingName(zone.name);
+    setPendingRadius(zone.radiusKm);
+    setEditingZoneId(zone.id);
+    setIsPlacing(false);
+    setFlyTarget({ lat: zone.lat, lon: zone.lng });
   };
 
   const mapCenter =
@@ -184,7 +359,7 @@ export default function GeofenceEditor({ familyId }) {
               : "Sign in with Google to manage family geofences"}
           </p>
         </div>
-        {familyId && !isPlacing && (
+        {familyId && !isPlacing && !editingZoneId && (
           <button
             style={styles.addBtn}
             onClick={() => {
@@ -195,7 +370,7 @@ export default function GeofenceEditor({ familyId }) {
             + Add Zone
           </button>
         )}
-        {isPlacing && (
+        {(isPlacing || pendingLat !== null) && (
           <button style={styles.cancelBtn} onClick={handleCancelPlace}>
             ✕ Cancel
           </button>
@@ -205,6 +380,9 @@ export default function GeofenceEditor({ familyId }) {
       {/* ── Status messages ───────────────────────────────────────────────── */}
       {error && <div style={styles.errorBox}>⚠️ {error}</div>}
       {success && <div style={styles.successBox}>✓ {success}</div>}
+
+      {/* ── Location search bar ───────────────────────────────────────────── */}
+      {familyId && <LocationSearch onSelect={handleSearchSelect} />}
 
       {/* ── Placing instruction banner ────────────────────────────────────── */}
       {isPlacing && (
@@ -228,20 +406,23 @@ export default function GeofenceEditor({ familyId }) {
             attribution="&copy; OpenStreetMap contributors"
           />
           <MapClickHandler onMapClick={handleMapClick} isPlacing={isPlacing} />
+          {flyTarget && <MapFlyTo target={flyTarget} />}
 
           {/* Existing zones */}
           {zones.map((zone, i) => {
             const color = ZONE_COLORS[i % ZONE_COLORS.length];
+            const isBeingEdited = editingZoneId === zone.id;
             return (
               <Circle
                 key={zone.id}
                 center={[zone.lat, zone.lng]}
                 radius={zone.radiusKm * 1000}
                 pathOptions={{
-                  color,
-                  fillColor: color,
-                  fillOpacity: 0.15,
-                  weight: 2,
+                  color: isBeingEdited ? "#f59e0b" : color,
+                  fillColor: isBeingEdited ? "#f59e0b" : color,
+                  fillOpacity: isBeingEdited ? 0.25 : 0.15,
+                  weight: isBeingEdited ? 3 : 2,
+                  dashArray: isBeingEdited ? "6 4" : undefined,
                 }}
               >
                 <Popup>
@@ -252,22 +433,44 @@ export default function GeofenceEditor({ familyId }) {
                       Radius: {zone.radiusKm} km
                     </span>
                     <br />
-                    <button
-                      onClick={() => handleDelete(zone.id, zone.name)}
-                      disabled={deletingId === zone.id}
+                    <div
                       style={{
+                        display: "flex",
+                        gap: "6px",
                         marginTop: "8px",
-                        padding: "4px 10px",
-                        background: "#ef4444",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        fontSize: "12px",
+                        justifyContent: "center",
                       }}
                     >
-                      {deletingId === zone.id ? "⏳" : "🗑️ Delete"}
-                    </button>
+                      <button
+                        onClick={() => handleEditZone(zone)}
+                        style={{
+                          padding: "4px 10px",
+                          background: "#3b82f6",
+                          color: "white",
+                          border: "none",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                          fontSize: "12px",
+                        }}
+                      >
+                        ✏️ Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(zone.id, zone.name)}
+                        disabled={deletingId === zone.id}
+                        style={{
+                          padding: "4px 10px",
+                          background: "#ef4444",
+                          color: "white",
+                          border: "none",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                          fontSize: "12px",
+                        }}
+                      >
+                        {deletingId === zone.id ? "⏳" : "🗑️ Delete"}
+                      </button>
+                    </div>
                   </div>
                 </Popup>
               </Circle>
@@ -297,10 +500,12 @@ export default function GeofenceEditor({ familyId }) {
         </MapContainer>
       </div>
 
-      {/* ── New zone form (shown after map click) ────────────────────────── */}
+      {/* ── Zone form (new or edit) ───────────────────────────────────────── */}
       {pendingLat !== null && (
         <div style={styles.formCard}>
-          <p style={styles.formTitle}>🆕 Configure New Zone</p>
+          <p style={styles.formTitle}>
+            {editingZoneId ? "✏️ Edit Zone" : "🆕 Configure New Zone"}
+          </p>
 
           <div style={styles.coordRow}>
             <span style={styles.coordChip}>
@@ -310,9 +515,10 @@ export default function GeofenceEditor({ familyId }) {
               style={styles.replaceBtn}
               onClick={() => {
                 setIsPlacing(true);
+                // intentionally do NOT reset pendingName here
               }}
             >
-              Replace
+              Move
             </button>
           </div>
 
@@ -354,7 +560,11 @@ export default function GeofenceEditor({ familyId }) {
               onClick={handleSave}
               disabled={saving}
             >
-              {saving ? "⏳ Saving…" : "✓ Save Zone"}
+              {saving
+                ? "⏳ Saving…"
+                : editingZoneId
+                  ? "✓ Update Zone"
+                  : "✓ Save Zone"}
             </button>
           </div>
         </div>
@@ -377,7 +587,14 @@ export default function GeofenceEditor({ familyId }) {
                   </span>
                 </div>
                 <button
-                  style={styles.deleteBtn}
+                  style={{ ...styles.actionBtn, color: "#3b82f6" }}
+                  onClick={() => handleEditZone(zone)}
+                  title="Edit zone"
+                >
+                  ✏️
+                </button>
+                <button
+                  style={styles.actionBtn}
                   onClick={() => handleDelete(zone.id, zone.name)}
                   disabled={deletingId === zone.id}
                   title="Delete zone"
@@ -397,7 +614,7 @@ export default function GeofenceEditor({ familyId }) {
             No zones yet.
           </p>
           <p style={{ margin: "4px 0 0", color: "#444", fontSize: "12px" }}>
-            Click "Add Zone" to define safe areas for your riders.
+            Search a location or click the map, then click "+ Add Zone".
           </p>
         </div>
       )}
@@ -646,7 +863,7 @@ const styles = {
     fontSize: "11px",
     fontFamily: "monospace",
   },
-  deleteBtn: {
+  actionBtn: {
     background: "transparent",
     border: "none",
     cursor: "pointer",
