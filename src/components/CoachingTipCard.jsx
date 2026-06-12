@@ -1,22 +1,45 @@
-import { useState, useEffect } from 'react';
-import { ref, push, set, onValue } from 'firebase/database';
-import { db } from '../config/firebase';
-import { generateCoachingTips, getTipIcon } from '../utils/Coachingtips';
-import './CoachingTipCard.css';
+// Watcher-side panel: shows auto-generated tips based on rider's eco score,
+// lets watcher send tips to rider's Firebase inbox, and lists previously sent tips.
 
-export default function CoachingTipCard({ ecoScore, tripData, riderId, watcherId }) {
+import { useState, useEffect } from "react";
+import { ref, push, set, onValue } from "firebase/database";
+import { db } from "../config/firebase";
+import { generateCoachingTips, getTipIcon } from "../utils/Coachingtips";
+import "./CoachingTipCard.css";
+
+// Props:
+//   ecoScore  — selected trip's eco score, drives tip generation
+//   tripData  — full trip object, passed to generateCoachingTips for context
+//   riderId   — Firebase key, target for sending tips + reading sent history
+//   watcherId — sender label stored on each sent tip (defaults to "parent")
+
+export default function CoachingTipCard({
+  ecoScore,
+  tripData,
+  riderId,
+  watcherId,
+}) {
+  // tips: locally generated suggestions (not yet sent) — regenerated on ecoScore/tripData change
+  // sentTips: history pulled from riders/{riderId}/coachingTips via Firebase
+  // selectedTip: tip pending confirmation in the send modal
+  // isSending: disables Confirm button during Firebase write
   const [tips, setTips] = useState([]);
   const [sentTips, setSentTips] = useState([]);
   const [selectedTip, setSelectedTip] = useState(null);
   const [isSending, setIsSending] = useState(false);
 
   // Generate tips on eco-score change
+  // Regenerates suggested tips whenever the selected trip's score/data changes.
+
   useEffect(() => {
     const generatedTips = generateCoachingTips(ecoScore, tripData);
     setTips(generatedTips);
   }, [ecoScore, tripData]);
 
   // Listen for tips sent from Firebase
+  // Subscribes to riders/{riderId}/coachingTips. Sorts newest-first.
+  // NOTE: onValue subscription is never unsubscribed — leaks on riderId change/unmount.
+
   useEffect(() => {
     if (!riderId) return;
 
@@ -28,7 +51,9 @@ export default function CoachingTipCard({ ecoScore, tripData, riderId, watcherId
           ...tip,
           id: key,
         }));
-        setSentTips(tipsList.sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt)));
+        setSentTips(
+          tipsList.sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt)),
+        );
       } else {
         setSentTips([]);
       }
@@ -36,9 +61,12 @@ export default function CoachingTipCard({ ecoScore, tripData, riderId, watcherId
   }, [riderId]);
 
   // Send tip to rider
+  // Pushes a new tip to riders/{riderId}/coachingTips with sentBy/sentAt/read=false.
+  // Rider sees it immediately via RiderTipsInbox's own listener.
+
   const sendTipToRider = async (tip) => {
     if (!riderId) {
-      alert('Rider ID not set');
+      alert("Rider ID not set");
       return;
     }
 
@@ -48,7 +76,7 @@ export default function CoachingTipCard({ ecoScore, tripData, riderId, watcherId
       const tipsRef = ref(db, `riders/${riderId}/coachingTips`);
       await push(tipsRef, {
         ...tip,
-        sentBy: watcherId || 'parent',
+        sentBy: watcherId || "parent",
         sentAt: new Date().toISOString(),
         read: false,
       });
@@ -63,6 +91,8 @@ export default function CoachingTipCard({ ecoScore, tripData, riderId, watcherId
   };
 
   // Clear a sent tip
+  // Deletes a single sent tip by setting its Firebase node to null.
+
   const clearSentTip = async (tipId) => {
     try {
       const tipRef = ref(db, `riders/${riderId}/coachingTips/${tipId}`);
@@ -72,10 +102,12 @@ export default function CoachingTipCard({ ecoScore, tripData, riderId, watcherId
     }
   };
 
+  // Maps tip.priority → badge/border color (high=red, medium=yellow, low=green).
+
   const priorityColor = {
-    high: '#f44336',
-    medium: '#FFC107',
-    low: '#4CAF50',
+    high: "#f44336",
+    medium: "#FFC107",
+    low: "#4CAF50",
   };
 
   return (
@@ -99,8 +131,13 @@ export default function CoachingTipCard({ ecoScore, tripData, riderId, watcherId
                 }}
               >
                 <div className="tip-header">
-                  <h4>{getTipIcon(tip.category)} {tip.title}</h4>
-                  <span className="priority-badge" style={{ background: priorityColor[tip.priority] }}>
+                  <h4>
+                    {getTipIcon(tip.category)} {tip.title}
+                  </h4>
+                  <span
+                    className="priority-badge"
+                    style={{ background: priorityColor[tip.priority] }}
+                  >
                     {tip.priority.toUpperCase()}
                   </span>
                 </div>
@@ -120,6 +157,8 @@ export default function CoachingTipCard({ ecoScore, tripData, riderId, watcherId
       </div>
 
       {/* Sent Tips History */}
+      {/* Auto-generated tips — each has a "Send to Rider" button that opens confirm modal */}
+
       <div className="sent-tips-section">
         <h3>Tips Sent ({sentTips.length})</h3>
         {sentTips.length === 0 ? (
@@ -129,9 +168,13 @@ export default function CoachingTipCard({ ecoScore, tripData, riderId, watcherId
             {sentTips.map((sentTip) => (
               <div key={sentTip.id} className="sent-tip-card">
                 <div className="sent-tip-header">
-                  <h5>{getTipIcon(sentTip.category)} {sentTip.title}</h5>
-                  <span className={`read-badge ${sentTip.read ? 'read' : 'unread'}`}>
-                    {sentTip.read ? '✓ Read' : '○ Unread'}
+                  <h5>
+                    {getTipIcon(sentTip.category)} {sentTip.title}
+                  </h5>
+                  <span
+                    className={`read-badge ${sentTip.read ? "read" : "unread"}`}
+                  >
+                    {sentTip.read ? "✓ Read" : "○ Unread"}
                   </span>
                 </div>
 
@@ -139,23 +182,23 @@ export default function CoachingTipCard({ ecoScore, tripData, riderId, watcherId
 
                 <div className="sent-tip-meta">
                   <small>
-                    Sent {new Date(sentTip.sentAt).toLocaleDateString()} at{' '}
+                    Sent {new Date(sentTip.sentAt).toLocaleDateString()} at{" "}
                     {new Date(sentTip.sentAt).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
+                      hour: "2-digit",
+                      minute: "2-digit",
                     })}
                   </small>
                   <button
                     onClick={() => clearSentTip(sentTip.id)}
                     style={{
-                      marginLeft: '10px',
-                      background: '#f44336',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      padding: '4px 8px',
-                      cursor: 'pointer',
-                      fontSize: '12px',
+                      marginLeft: "10px",
+                      background: "#f44336",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "4px",
+                      padding: "4px 8px",
+                      cursor: "pointer",
+                      fontSize: "12px",
                     }}
                   >
                     🗑️ Clear
@@ -187,7 +230,7 @@ export default function CoachingTipCard({ ecoScore, tripData, riderId, watcherId
                 disabled={isSending}
                 className="btn btn-confirm"
               >
-                {isSending ? '⏳ Sending...' : '✓ Send Tip'}
+                {isSending ? "⏳ Sending..." : "✓ Send Tip"}
               </button>
             </div>
           </div>
