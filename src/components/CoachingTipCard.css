@@ -1,4 +1,6 @@
 /* CoachingTipCard.css */
+/* Root container for the Watcher-side coaching panel.
+   Dark card theme matches rest of app (#1a1a1a bg, #333 border). */
 
 .coaching-tip-card {
   background: #1a1a1a;
@@ -28,6 +30,9 @@
   line-height: 1.5;
 }
 
+/* Unused utility classes — not referenced in CoachingTipCard.jsx.
+   Kept for potential inline score/status styling. Safe to remove if unused elsewhere. */
+
 .coaching-tip-card .tip-score {
   font-weight: bold;
   color: #64b5f6;
@@ -41,6 +46,8 @@
   color: #66bb6a;
 }
 
+/* "Based on Eco-Score: X/100" subtitle under the card heading. */
+
 .eco-context {
   color: #999;
   font-size: 14px;
@@ -48,6 +55,8 @@
 }
 
 /* Tips Section */
+/* Section wrappers for "Recommended Tips" and "Tips Sent" lists. */
+
 .tips-section,
 .sent-tips-section {
   margin-bottom: 30px;
@@ -60,6 +69,8 @@
   margin-bottom: 15px;
 }
 
+/* Empty-state message (e.g. "No tips available. Riding perfectly!"). */
+
 .no-tips {
   color: #888;
   font-style: italic;
@@ -70,11 +81,16 @@
 }
 
 /* Tips List */
+/* Grid containers for tip cards — vertical stack with gap spacing. */
+
 .tips-list,
 .sent-tips-list {
   display: grid;
   gap: 15px;
 }
+
+/* Individual tip card. tip-card = generated tip (with Send button);
+   sent-tip-card = history entry (read-only, green accent). */
 
 .tip-card,
 .sent-tip-card {
@@ -83,6 +99,8 @@
   border-radius: 6px;
   border: 1px solid #444;
 }
+
+/* Row: tip title (left) + priority badge (right), top-aligned. */
 
 .tip-header {
   display: flex;
@@ -98,6 +116,8 @@
   flex: 1;
 }
 
+/* Color set inline via JS (priorityColor map) based on high/medium/low. */
+
 .priority-badge {
   padding: 4px 8px;
   border-radius: 4px;
@@ -108,14 +128,18 @@
   margin-left: 10px;
 }
 
+/* Tip body text inside .tip-card. */
+
 .tip-message {
   color: #cccccc;
   font-size: 14px;
   margin: 10px 0;
 }
 
+/* "📤 Send to Rider" button — opens confirmation modal on click. */
+
 .btn-send-tip {
-  background: #4CAF50;
+  background: #4caf50;
   color: white;
   padding: 8px 16px;
   border: none;
@@ -130,12 +154,17 @@
 }
 
 /* Sent Tips */
+/* Overrides base .tip-card styling for sent-history entries —
+   green left border + darker green background to distinguish from active tips. */
+
 .sent-tip-card {
   padding: 15px;
   background: #1a3a1a;
-  border-left: 4px solid #4CAF50;
+  border-left: 4px solid #4caf50;
   border: 1px solid #2a5a2a;
 }
+
+/* Row: tip title + read/unread badge for sent tips. */
 
 .sent-tip-header {
   display: flex;
@@ -159,21 +188,27 @@
   margin-left: 10px;
 }
 
+/* Green = rider has opened tip; yellow = still unread. */
+
 .read-badge.read {
-  background: #4CAF50;
+  background: #4caf50;
   color: white;
 }
 
 .read-badge.unread {
-  background: #FFC107;
+  background: #ffc107;
   color: white;
 }
+
+/* Smaller body text for sent-tip history (vs active tip-message). */
 
 .sent-tip-message {
   color: #cccccc;
   font-size: 13px;
   margin: 8px 0;
 }
+
+/* Timestamp + delete button row at bottom of sent-tip-card. */
 
 .sent-tip-meta {
   color: #777;
@@ -182,6 +217,8 @@
 }
 
 /* Modal */
+/* Full-screen dim backdrop for the "Send Coaching Tip?" confirmation modal. */
+
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -194,6 +231,8 @@
   justify-content: center;
   z-index: 1000;
 }
+
+/* Confirmation modal box — shows tip preview before sending. */
 
 .modal-content {
   background: #1a1a1a;
@@ -210,6 +249,8 @@
   color: #ffffff;
 }
 
+/* Preview of the selected tip inside the confirmation modal. */
+
 .modal-tip-title {
   font-size: 16px;
   font-weight: bold;
@@ -223,11 +264,15 @@
   margin-bottom: 20px;
 }
 
+/* Cancel / Confirm button row, right-aligned. */
+
 .modal-actions {
   display: flex;
   gap: 10px;
   justify-content: flex-end;
 }
+
+/* Grey "Cancel" button — closes modal without sending. */
 
 .btn-cancel {
   background: #444;
@@ -243,8 +288,10 @@
   background: #555;
 }
 
+/* Green "Send Tip" button — disabled state while isSending=true. */
+
 .btn-confirm {
-  background: #4CAF50;
+  background: #4caf50;
   color: white;
   padding: 10px 20px;
   border: none;
@@ -263,6 +310,8 @@
 }
 
 /* Responsive */
+/* Mobile: modal shrinks to 90% width. */
+
 @media (max-width: 768px) {
   .modal-content {
     width: 90%;
