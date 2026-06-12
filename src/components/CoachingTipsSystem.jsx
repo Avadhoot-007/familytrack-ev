@@ -1,15 +1,54 @@
-// CoachingTipsSystem: Real-time riding tips displayed as fixed notification panel
-// Prioritizes critical/high-priority tips over info (dismissible)
+// ---------------------------------------------------------------------------
+// CoachingTipsSystem.jsx
+// Rider-facing coaching tip overlay system.
+//
+// Two exports:
+//   CoachingTipsSystem (default) — fixed bottom-right floating panel shown
+//     during an active trip. Displays up to 3 tips sorted by priority
+//     (critical/high first). Each tip is dismissible for the session.
+//
+//   CoachingTipsModal (named) — modal version used in WatcherDashboard and
+//     trip detail views. Renders all tips inside a centred overlay card.
+//
+// Tips are passed in via the `tips` prop (array). This component does NOT
+// generate tips — callers (RiderDashboard, EnvironmentalImpactHub) provide
+// the array from getCoachingTips() in ecoImpactCalculations.js.
+// ---------------------------------------------------------------------------
+
 import React, { useState } from "react";
+
+// ---------------------------------------------------------------------------
+// CoachingTipsSystem
+// Fixed floating panel anchored to the bottom-right corner of the viewport.
+// Only renders when visibleTips.length > 0 (returns null otherwise).
+//
+// Props:
+//   tips      {Array}  — coaching tip objects from getCoachingTips()
+//                        Each tip: { title, tip, metric, icon, priority }
+//                        priority: "critical" | "high" | "info" | "low"
+//   ecoScore  {number} — current trip eco score (passed but not used in this
+//                        component directly; available for future logic)
+//   onDismiss {func}   — optional callback fired when a tip is dismissed
+//                        (currently not called; dismiss is local-only)
+// ---------------------------------------------------------------------------
 
 const CoachingTipsSystem = ({
   tips = [],
   ecoScore = 0,
   onDismiss = () => {},
 }) => {
-  const [dismissedTipIds, setDismissedTipIds] = useState(new Set());
+  // Tracks titles of tips the rider has dismissed this session.
+  // Uses tip.title as the key (not id) because auto-generated tips
+  // don't always carry stable ids. Set is recreated on component mount —
+  // dismissed tips reappear after a page refresh (intentional).
 
+  const [dismissedTipIds, setDismissedTipIds] = useState(new Set());
   const visibleTips = tips.filter((tip) => !dismissedTipIds.has(tip.title));
+  // Split visible tips into two buckets:
+  //   highPriority — critical or high; shown first, pulsing red/orange
+  //   otherTips    — info or low; shown below, static green
+  // Merge order guarantees critical tips always lead the display list.
+
   const highPriority = visibleTips.filter(
     (t) => t.priority === "critical" || t.priority === "high",
   );
@@ -17,12 +56,22 @@ const CoachingTipsSystem = ({
     (t) => t.priority !== "critical" && t.priority !== "high",
   );
 
+  // handleDismiss
+  // Adds the tip's title to the local dismissed set.
+  // Does NOT call onDismiss prop — parent is not notified.
+  // Tip stays dismissed until the component unmounts or page refreshes.
+
   const handleDismiss = (tipTitle) => {
     setDismissedTipIds(new Set([...dismissedTipIds, tipTitle]));
   };
 
+  // Early return — render nothing when all tips are dismissed or tips=[].
+  // Avoids an empty fixed-position div occupying the bottom-right corner.
+
   if (!visibleTips.length) return null;
 
+  // Cap display at 3 tips to avoid stacking too many notifications.
+  // Merge ensures critical tips are never cut off by the slice.
   const displayTips = [...highPriority, ...otherTips].slice(0, 3);
 
   return (
@@ -47,6 +96,10 @@ const CoachingTipsSystem = ({
       `}</style>
 
       {displayTips.map((tip, idx) => {
+        // Derive card background and box-shadow color from priority level.
+        // critical → red (#dc3545), high → orange (#ff9800),
+        // info → blue (#2196F3), default/low → green (#28a745)
+
         const bgColor =
           tip.priority === "critical"
             ? "#dc3545"
@@ -56,8 +109,15 @@ const CoachingTipsSystem = ({
                 ? "#2196F3"
                 : "#28a745";
 
+        // isCritical drives the pulsing animation — only critical/high tips pulse.
+        // Low/info tips render static to avoid visual noise during normal riding.
+
         const isCritical =
           tip.priority === "critical" || tip.priority === "high";
+
+        // Render: fixed-position wrapper div (z-index 1000, slideUp animation).
+        // Maps displayTips → individual tip cards with dynamic background color,
+        // pulse animation for critical/high, and a dismiss button per card.
 
         return (
           <div
@@ -140,15 +200,33 @@ const CoachingTipsSystem = ({
 };
 
 // Standalone Modal Version (for dashboard card)
+// ---------------------------------------------------------------------------
+// CoachingTipsModal (named export)
+// Full-screen overlay modal version of the coaching tips display.
+// Used in WatcherDashboard trip detail modal and EnvironmentalImpactHub.
+//
+// Unlike CoachingTipsSystem, tips are NOT dismissible — all are shown.
+// Clicking the backdrop or the "Got It" button closes the modal.
+//
+// Props:
+//   isOpen  {bool}   — controls visibility; returns null when false
+//   tips    {Array}  — same shape as CoachingTipsSystem tips prop
+//   onClose {func}   — called when backdrop or "Got It" is clicked
+// ---------------------------------------------------------------------------
 export const CoachingTipsModal = ({ isOpen, tips = [], onClose }) => {
+  // Gate render — skip mounting the modal DOM entirely when closed.
+  // Prevents backdrop from intercepting clicks when the modal is hidden.
   if (!isOpen) return null;
-
+  // Same priority-sort logic as CoachingTipsSystem — critical/high tips
+  // appear first, lower priority tips follow. No slice cap here; all tips shown.
   const criticalTips = tips.filter(
     (t) => t.priority === "critical" || t.priority === "high",
   );
   const otherTips = tips.filter(
     (t) => t.priority !== "critical" && t.priority !== "high",
   );
+  // Merged display order: critical → high → info/low.
+  // No deduplication needed — callers pass pre-deduplicated arrays.
   const allTips = [...criticalTips, ...otherTips];
 
   return (
