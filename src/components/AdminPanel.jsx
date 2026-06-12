@@ -1,11 +1,14 @@
 // AdminPanel: Edit eco-scoring constants and environmental impact factors from Firebase
 // Allows tuning: throttle/speed/accel weights, thresholds, CO2 factors
 // Requires admin password; changes sync to all devices via Firebase config/ecoConstants
+
 import React, { useState, useEffect } from "react";
 import { db } from "../config/firebase";
 import { ref, get, set } from "firebase/database";
 
-// Default constants (mirrors ecoScoring.js + ecoImpactCalculations.js)
+// Default eco-scoring and impact constants. Mirrors ecoScoring.js + ecoImpactCalculations.js.
+// Used as fallback when Firebase config/ecoConstants is empty, and as reset target.
+
 const DEFAULTS = {
   // Eco Scoring weights (must sum to 100)
   throttleWeight: 35,
@@ -25,13 +28,17 @@ const DEFAULTS = {
   treeAbsorbsPerYear: 21,
 };
 
+// Single source of truth path — all reads/writes target this node.
 const FIREBASE_PATH = "config/ecoConstants";
 
+// Client-side password check only. Not secure for production — academic deployment only.
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "admin123";
 
 // ---------------------------------------------------------------------------
 // Field metadata for rendering
 // ---------------------------------------------------------------------------
+// Drives the entire form UI. Each group renders as a card; each field
+// renders a slider + number input bound to `constants[field.key]`.
 const FIELD_GROUPS = [
   {
     title: "⚖️ Eco Score Weights",
@@ -162,10 +169,16 @@ const FIELD_GROUPS = [
 // ---------------------------------------------------------------------------
 // Password Gate
 // ---------------------------------------------------------------------------
+// Gatekeeper shown before AdminPanel renders. Validates password locally,
+// shows shake animation + error message on failure, clears input after.
+
 function PasswordGate({ onAuth }) {
   const [pw, setPw] = useState("");
   const [error, setError] = useState(false);
   const [shake, setShake] = useState(false);
+
+  // Compares input to ADMIN_PASSWORD. On success calls onAuth() to unlock panel.
+  // On failure: triggers shake animation, shows error for 2s, clears field.
 
   const attempt = () => {
     if (pw === ADMIN_PASSWORD) {
@@ -291,6 +304,9 @@ function PasswordGate({ onAuth }) {
 // ---------------------------------------------------------------------------
 // Main Admin Panel
 // ---------------------------------------------------------------------------
+// Main component. Gated by PasswordGate. Fetches constants from Firebase,
+// tracks local edits as "dirty" state, validates weight sum = 100 before save.
+
 export default function AdminPanel() {
   const [authed, setAuthed] = useState(false);
   const [constants, setConstants] = useState(DEFAULTS);
@@ -300,6 +316,9 @@ export default function AdminPanel() {
   const [dirty, setDirty] = useState(false);
 
   // ── Fetch from Firebase on mount ─────────────────────────────────────────
+  // Runs once after auth. Merges Firebase values over DEFAULTS (handles
+  // partial configs). Sets both `constants` (editable) and `saved` (baseline for diff).
+
   useEffect(() => {
     if (!authed) return;
     const fetch = async () => {
@@ -320,15 +339,24 @@ export default function AdminPanel() {
   }, [authed]);
 
   // ── Track dirty state ─────────────────────────────────────────────────────
+  // Recomputes dirty flag whenever constants or saved baseline change.
+  // Drives the "unsaved changes" warning and disables Save when false.
+
   useEffect(() => {
     setDirty(JSON.stringify(constants) !== JSON.stringify(saved));
   }, [constants, saved]);
+
+  // Updates a single constant from slider or number input.
+  // Ignores NaN (e.g. empty input) to avoid breaking calculations downstream.
 
   const handleChange = (key, val) => {
     const parsed = parseFloat(val);
     if (isNaN(parsed)) return;
     setConstants((prev) => ({ ...prev, [key]: parsed }));
   };
+
+  // Writes entire `constants` object to Firebase. Updates `saved` baseline on
+  // success so dirty state clears. Shows saved/error status for 2.5-3s.
 
   const handleSave = async () => {
     setSaveStatus("saving");
@@ -344,18 +372,27 @@ export default function AdminPanel() {
     }
   };
 
+  // Reverts all fields to hardcoded DEFAULTS (not yet saved to Firebase).
+
   const handleReset = () => {
     setConstants({ ...DEFAULTS });
   };
+
+  // Discards unsaved edits, restores last-saved Firebase values.
 
   const handleRevert = () => {
     setConstants({ ...saved });
   };
 
   // Weight sum validation
+  // Eco score weights must sum to 100 (throttle + speed + accel penalties
+  // can't exceed 100 total). Save button disabled when weightOk is false.
+
   const weightSum =
     constants.throttleWeight + constants.speedWeight + constants.accelWeight;
   const weightOk = Math.round(weightSum) === 100;
+
+  // Render gate — nothing below mounts until password accepted.
 
   if (!authed) return <PasswordGate onAuth={() => setAuthed(true)} />;
 
@@ -516,8 +553,8 @@ export default function AdminPanel() {
             </div>
           )}
         </div>
-
         {/* Weight sum warning */}
+        // Persistent warning banner when weight sum ≠ 100 — blocks saving.
         {!weightOk && (
           <div
             style={{
@@ -534,8 +571,10 @@ export default function AdminPanel() {
             — must equal 100. Save is blocked until corrected.
           </div>
         )}
-
         {/* Constant groups */}
+        // Renders one card per FIELD_GROUPS entry. Each field shows: // slider+
+        number input (linked), unit label, and a reset-to-default button.
+        //"modified" pill appears when current value differs from DEFAULTS.
         {FIELD_GROUPS.map((group) => (
           <div
             key={group.title}
@@ -544,7 +583,9 @@ export default function AdminPanel() {
           >
             <h2 className="section-title">{group.title}</h2>
             <p className="section-sub">{group.subtitle}</p>
-
+            // isWarn highlights weight fields red when weightSum invalid.
+            //`changed` compares current vs DEFAULTS (not vs saved) to show
+            "modified" pill.
             {group.fields.map((f) => {
               const isWeightField = f.key.endsWith("Weight");
               const isWarn = isWeightField && !weightOk;
@@ -618,8 +659,10 @@ export default function AdminPanel() {
             })}
           </div>
         ))}
-
         {/* Live preview */}
+        // Header card: title, action buttons (Revert/Reset/Save), and status
+        messages. // Save button color reflects state:
+        grey=disabled,green=ready, dark green=saved, red=error.
         <div className="admin-card">
           <h2 className="section-title" style={{ marginBottom: "14px" }}>
             🔍 Live Preview
@@ -685,7 +728,6 @@ export default function AdminPanel() {
             ))}
           </div>
         </div>
-
         {/* Footer */}
         <p
           style={{
