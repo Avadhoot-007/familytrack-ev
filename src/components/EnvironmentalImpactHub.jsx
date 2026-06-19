@@ -1,16 +1,12 @@
 // ---------------------------------------------------------------------------
-// EnvironmentalImpactHub.jsx
-// Rider-facing environmental analytics dashboard.
-// Displays CO2 savings, tree equivalents, badges, coaching tips, leaderboard,
-// weekly challenges, and trip history with PDF export.
-//
-// Props:
-//   tripHistory  — array of completed trip objects from Zustand store
-//   currentTrip  — live trip object during active ride (or null)
-//   allRiders    — reserved for future multi-rider aggregation (unused currently)
+// Main eco analytics dashboard. Aggregates trip stats, badges, coaching tips,
+// leaderboard, weekly challenges across 4 tabs: Overview, Trip Details, Leaderboard, Challenges.
 // ---------------------------------------------------------------------------
 
 import React, { useState, useEffect, useRef } from "react";
+
+// Pure eco calculation utilities — no Firebase dependency.
+
 import {
   calculateCO2Savings,
   calculateTreeEquivalents,
@@ -18,20 +14,26 @@ import {
   getNextBadgeTarget,
   getCoachingTips,
 } from "../utils/ecoImpactCalculations";
+
+// normalizeRiderId: strips special characters and lowercases rider name strings.
+// Used as a stable dedup key when grouping trips by riderName in leaderboard
+// and riderMap — prevents duplicate rows from "Rider " vs "rider" vs "Rider".
+
 import { normalizeRiderId } from "../services/locationService";
 import RiderLeaderboard from "./RiderLeaderboard";
 import { downloadTripPDF } from "../utils/tripPDFExport";
 
 // ---------------------------------------------------------------------------
 // calculateStreak
-// Counts how many consecutive days ending today have at least one trip.
-// Iterates backward from today up to 365 days; breaks on the first day
-// without a trip. Uses a Set of date strings for O(1) lookup per day.
+// Counts consecutive days ending today that have at least one recorded trip.
+// Counts consecutive days ending today with at least one trip.
+// Skips today if no trip yet (i===0) without breaking the streak.
+// Returns: streak count as integer (0 if no trips or no recent activity).
 // ---------------------------------------------------------------------------
 const calculateStreak = (tripHistory) => {
   if (!tripHistory.length) return 0;
 
-  // Build a set of date strings from all trips that have a valid timestamp
+  // Set for O(1) date lookups across up to 100 trip entries.
   const tripDates = new Set(
     tripHistory
       .filter((t) => t.timestamp)
@@ -58,14 +60,16 @@ const calculateStreak = (tripHistory) => {
 
 // ---------------------------------------------------------------------------
 // getWeeklyProgress
-// Aggregates trip stats for the current Sun->Sat calendar week.
-// Used by ChallengesTab to evaluate weekly challenge completion.
-// Returns: tripCount, highScoreTrips, totalDistance, allAbove70, avgScore, daysRidden
+// Aggregates this Mon→Sun week's trips into challenge-relevant stats.
+// Returns: tripCount, highScoreTrips, totalDistance, allAbove70, avgScore, daysRidden.
 // ---------------------------------------------------------------------------
+
 const getWeeklyProgress = (tripHistory) => {
   const now = new Date();
 
-  // Find the start of the current week (Monday 00:00:00)
+  // Anchor to Monday: getDay() returns 0 (Sun)…6 (Sat).
+  // day === 0 (Sunday) → subtract 6 to reach the previous Monday.
+  // day >= 1          → subtract (day - 1) to reach this week's Monday.
   const weekStart = new Date(now);
   const day = now.getDay();
   weekStart.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
@@ -102,11 +106,10 @@ const getWeeklyProgress = (tripHistory) => {
 
 // ---------------------------------------------------------------------------
 // WEEKLY_CHALLENGES
-// Static config array for all 6 weekly challenges.
-// Each challenge has:
-//   getValue(wp, streak) -> current progress value
-//   target               -> value needed to complete
-//   isBool               -> if true, renders as done/not-done instead of a bar
+// Static config array — one object per challenge.
+// Evaluated fresh each render inside ChallengesTab via WEEKLY_CHALLENGES.map().
+// Adding a new challenge: push an entry here; ChallengesTab renders it
+// automatically — no other code changes required.
 // ---------------------------------------------------------------------------
 const WEEKLY_CHALLENGES = [
   {
@@ -191,6 +194,7 @@ const daysUntilReset = () => {
 // ---------------------------------------------------------------------------
 function BadgeUnlockOverlay({ badge, onDone }) {
   useEffect(() => {
+    // Cleanup prevents onDone firing on an unmounted component.
     const t = setTimeout(onDone, 2800);
     return () => clearTimeout(t);
   }, [onDone]);
